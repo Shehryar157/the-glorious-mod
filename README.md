@@ -27,21 +27,15 @@ Program Files, run the installer as administrator.
 
 ## What the mod does
 
-- **Launcher:** reads the buttons and the language box; Play Game starts the game.
-- **Menus:** every screen as a list of controls: buttons, on/off and multiple choice settings, sliders, lists,
-  drop-downs and name boxes, with "3 of 9" positions, Home/End and type-to-search. Screens with sections have
-  them as tabs. Texts that don't fit a control (descriptions, briefings, tutorial boxes) are read line by line.
-- **Campaigns and scenarios:** each campaign is its own menu item with its description; locked campaigns say
-  which expansion they need.
-- **Force selection:** each unit type with its cost and quantity; Right buys one, Left sells one, and the
-  points left are read.
-- **Deployment:** squares in the selected unit's deployment area say "Deploy here", others "Cannot deploy
-  here"; Enter places the unit.
-- **The battle map:** a cursor over the grid tells you the unit, terrain, hills and their height, line of sight
-  and coordinates; the orders the game offers on each square (move, charge, shoot, turn...) with their odds; the
-  game's own unit panels; a scanner over all units; announcements of enemy moves, units coming into view, losses,
-  morale changes, combat results and turns, all kept in message buffers to read back.
-- **After the battle:** the result, Final Losses as a table, and the battlefield review.
+The mod makes these parts of the game accessible:
+
+- The launcher
+- The main menu, settings, and loading and saving games
+- Tutorials, battles and campaigns, including each campaign's description
+- Force selection, where you buy your army
+- Deployment
+- The battle itself, played on the battle grid
+- The end of the battle: the result, the losses and the battlefield review
 
 ## What it cannot yet do
 
