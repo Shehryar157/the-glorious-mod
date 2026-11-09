@@ -12,9 +12,9 @@ Two DLLs, both 32-bit like the game:
   python tools/build.py uninstall  remove our files from the game folder
   python tools/build.py installer  build TheGloriousMod.exe (src/installer), the end user's installer
   python tools/build.py release 0.2.0
-                                   build everything and publish GitHub release fog2-v0.2.0 with the files
-                                   the installer downloads (version.dll, FoG2Access.dll, the NVDA client)
-                                   and the installer itself
+                                   build everything and publish GitHub release fog2-v0.2.0: only
+                                   TheGloriousMod.exe, with the mod files (version.dll, FoG2Access.dll,
+                                   the NVDA client) inside it
 """
 import glob
 import os
@@ -88,16 +88,36 @@ def build_installer():
     print(f"built {INSTALLER}")
 
 
+def add_payload(tag):
+    # The mod files go inside the installer (installer.cpp readPayload): after the program, entries
+    # {uint32 name length, name, uint32 size, data}, then {uint32 offset of the first entry, "GLORIOUSMOD1"}.
+    # Windows ignores data after a program's last section, so the exe still runs.
+    import struct
+    files = {"fog2/version.dll": open(LOADER, "rb").read(),
+             "fog2/FoG2Access.dll": open(MOD, "rb").read(),
+             "fog2/nvdaControllerClient32.dll": open(os.path.join(ROOT, "native", "nvdaControllerClient32.dll"), "rb").read(),
+             "fog2/version.txt": tag.encode()}
+    exe = open(INSTALLER, "rb").read()
+    out = bytearray(exe)
+    start = len(out)
+    for name, data in files.items():
+        out += struct.pack("<I", len(name)) + name.encode() + struct.pack("<I", len(data)) + data
+    out += struct.pack("<I", start) + b"GLORIOUSMOD1"
+    open(INSTALLER, "wb").write(out)
+    print(f"put {len(files)} files ({tag}) inside {INSTALLER}")
+
+
 def release(version):
     compile_dll(LOADER, "loader", [os.path.join(ROOT, "src", "loader", "version.def")])
     build_mod()
     build_installer()
     tag = f"fog2-v{version}"
-    nvda = os.path.join(ROOT, "native", "nvdaControllerClient32.dll")
+    add_payload(tag)
+    # One download for players (user, 2026-11-09): the release holds only the installer.
     notes = (f"Field of Glory II screen reader mod {version}.\n\n"
              "Download TheGloriousMod.exe and run it: choose Field of Glory II, then Install. "
-             "Run it again later to update or uninstall. The other files are what the installer downloads.")
-    subprocess.run([GH, "release", "create", tag, LOADER, MOD, nvda, INSTALLER, "--repo", REPO,
+             "Run it again later to update, reinstall or uninstall.")
+    subprocess.run([GH, "release", "create", tag, INSTALLER, "--repo", REPO,
                     "--title", f"Field of Glory II {version}", "--notes", notes], check=True)
     print(f"published {tag}")
 

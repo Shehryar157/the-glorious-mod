@@ -1,7 +1,8 @@
 // The Glorious Mod installer: installs, updates, reinstalls and removes the screen reader mods
 // for the Field of Glory games. Plain Win32 controls (list box, edits, buttons, progress bar), so
-// every screen reader reads them without help. The mod files come from the newest GitHub release
-// whose tag starts with the game's prefix (e.g. "fog2-v0.2.0"), so this exe rarely needs replacing.
+// every screen reader reads them without help. The mod files are inside this exe (see readPayload);
+// Install and Update fetch the newest GitHub release whose tag starts with the game's prefix
+// (e.g. "fog2-v0.2.0") and take the files out of that release's TheGloriousMod.exe.
 #define WIN32_LEAN_AND_MEAN
 #ifndef UNICODE
 #define UNICODE
@@ -11,7 +12,10 @@
 #include <shobjidl.h>
 #include <winhttp.h>
 #include <tlhelp32.h>
+#include <cstdint>
+#include <cstring>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -331,45 +335,99 @@ static bool doUninstall(const Game& g, const std::wstring& dir, std::wstring& ms
     return true;
 }
 
+// The mod files travel inside TheGloriousMod.exe (user, 2026-11-09: people download that one file only),
+// appended after the program by build.py: entries {uint32 name length, name ("fog2/version.dll", and
+// "fog2/version.txt" = the release tag), uint32 size, data}, then a footer {uint32 offset of the first entry,
+// "GLORIOUSMOD1"}. Install / Update download the newest release's TheGloriousMod.exe and take the files from
+// it; without GitHub, Install uses the copy inside the installer that is running.
+static const char MAGIC[] = "GLORIOUSMOD1";
+
+static bool readPayload(const std::string& exe, std::map<std::string, std::string>& files) {
+    files.clear();
+    if (exe.size() < 16 || exe.compare(exe.size() - 12, 12, MAGIC, 12) != 0) return false;
+    uint32_t at;
+    memcpy(&at, exe.data() + exe.size() - 16, 4);
+    size_t end = exe.size() - 16;
+    while (at + 8 <= end) {
+        uint32_t len, size;
+        memcpy(&len, exe.data() + at, 4);
+        if (at + 4 + len + 4 > end) return false;
+        std::string name = exe.substr(at + 4, len);
+        memcpy(&size, exe.data() + at + 4 + len, 4);
+        size_t data = at + 8 + len;
+        if (data + size > end) return false;
+        files[name] = exe.substr(data, size);
+        at = (uint32_t)(data + size);
+    }
+    return !files.empty();
+}
+
+static bool ownPayload(std::map<std::string, std::string>& files) {
+    wchar_t path[MAX_PATH];
+    std::string exe;
+    return GetModuleFileNameW(nullptr, path, MAX_PATH) && readFile(path, exe) && readPayload(exe, files);
+}
+
 static bool doInstall(const Game& g, const std::wstring& dir, Action action, std::wstring& msg) {
+    std::wstring before = installedVersion(g, dir);
+    if (fileExists(dir + L"\\version.dll") && before.empty()) {
+        msg = L"The game folder already has a version.dll from another mod or program; the installer won't overwrite it.";
+        return false;
+    }
+    std::string key = narrow(g.key) + "/";
+    std::map<std::string, std::string> own, files;
+    ownPayload(own);
+    std::wstring ownTag = own.count(key + "version.txt") ? widen(own[key + "version.txt"]) : L"";
+
     logLine(L"Asking GitHub for the newest release.");
     progress(10);
     std::string json;
     std::wstring err, tag;
     std::vector<Asset> assets;
-    if (!httpGet(L"https://api.github.com/repos/" REPO_PATH L"/releases?per_page=50", true, json, nullptr, err)) {
+    bool online = httpGet(L"https://api.github.com/repos/" REPO_PATH L"/releases?per_page=50", true, json, nullptr, err);
+    if (online && newestRelease(json, g.tagPrefix, tag, assets)) {
+        logLine(L"Newest release: " + tag);
+        progress(50);
+        if (action == UPDATE && before == tag) { progress(1000); msg = L"Already up to date: " + tag + L"."; return true; }
+        if (tag == ownTag) {
+            files = own; // this installer already holds that release
+        } else {
+            const Asset* a = nullptr;
+            for (auto& x : assets) if (_wcsicmp(x.name.c_str(), L"TheGloriousMod.exe") == 0) a = &x;
+            if (!a) { msg = L"Release " + tag + L" has no TheGloriousMod.exe."; return false; }
+            logLine(L"Downloading " + tag);
+            std::string exe;
+            unsigned long long total = a->size;
+            auto onProgress = [&](unsigned long long got, unsigned long long len) {
+                unsigned long long all = len ? len : total;
+                if (all) progress(50 + (int)(900 * got / all));
+            };
+            if (!httpGet(a->url, false, exe, onProgress, err)) { msg = L"Downloading " + tag + L" failed: " + err + L"."; return false; }
+            if (!readPayload(exe, files)) { msg = L"The download of " + tag + L" holds no mod files."; return false; }
+        }
+    } else if (action == UPDATE) {
+        msg = online ? L"There's no release for " + std::wstring(g.name) + L" on GitHub yet."
+                     : L"Couldn't reach GitHub to look for an update: " + err + L".";
+        return false;
+    } else if (!ownTag.empty()) {
+        logLine(online ? L"No release on GitHub; installing the copy inside this installer."
+                       : L"Couldn't reach GitHub (" + err + L"); installing the copy inside this installer.");
+        files = own;
+        tag = ownTag;
+    } else {
         msg = L"Couldn't reach GitHub: " + err + L".";
         return false;
     }
-    if (!newestRelease(json, g.tagPrefix, tag, assets)) { msg = L"There's no release for " + std::wstring(g.name) + L" on GitHub yet."; return false; }
-    logLine(L"Newest release: " + tag);
-    progress(50);
-    std::wstring before = installedVersion(g, dir);
-    if (action == UPDATE && before == tag) { progress(1000); msg = L"Already up to date: " + tag + L"."; return true; }
-    if (fileExists(dir + L"\\version.dll") && before.empty()) {
-        msg = L"The game folder already has a version.dll from another mod or program; the installer won't overwrite it.";
-        return false;
-    }
-    std::vector<const Asset*> wanted;
-    unsigned long long total = 0, done = 0;
+    if (files.count(key + "version.txt")) tag = widen(files[key + "version.txt"]);
+    std::vector<std::string> data;
     for (auto& f : g.files) {
-        const Asset* a = nullptr;
-        for (auto& x : assets) if (_wcsicmp(x.name.c_str(), f.c_str()) == 0) a = &x;
-        if (!a) { msg = L"Release " + tag + L" is missing " + f + L"."; return false; }
-        wanted.push_back(a);
-        total += a->size;
+        auto it = files.find(key + narrow(f));
+        if (it == files.end()) { msg = L"Release " + tag + L" is missing " + f + L"."; return false; }
+        data.push_back(it->second);
     }
-    std::vector<std::string> data(wanted.size());
-    for (size_t i = 0; i < wanted.size(); i++) {
-        logLine(L"Downloading " + wanted[i]->name);
-        auto onProgress = [&](unsigned long long got, unsigned long long) {
-            if (total) progress(50 + (int)(900 * (done + got) / total));
-        };
-        if (!httpGet(wanted[i]->url, false, data[i], onProgress, err)) { msg = L"Downloading " + wanted[i]->name + L" failed: " + err + L"."; return false; }
-        done += data[i].size();
-    }
+    progress(950);
     logLine(L"Copying the files into the game folder.");
-    for (size_t i = 0; i < wanted.size(); i++)
+    for (size_t i = 0; i < data.size(); i++)
         if (!replaceFile(dir + L"\\" + g.files[i], data[i], msg)) return false;
     if (!replaceFile(dir + L"\\" + g.marker, "The Glorious Mod installed this version.dll\r\nversion=" + narrow(tag) + "\r\n", msg)) return false;
     progress(1000);

@@ -1117,7 +1117,9 @@ std::wstring cat_name(int cat)
 {
     if (cat == GENERALS)
         return L"Generals";
-    return faction(cat ? 1 - my_side() : my_side());
+    // Which side is which, not only the faction's name (user, 2026-11-09): "You: Ancient British",
+    // "Enemy: Roman".
+    return (cat ? L"Enemy: " : L"You: ") + faction(cat ? 1 - my_side() : my_side());
 }
 
 std::vector<Group> groups_for(const Map &m, int cat)

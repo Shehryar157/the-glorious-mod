@@ -1,29 +1,136 @@
 # The Glorious Mod
 
-Screen reader access for the Field of Glory games, starting with **Field of Glory II** (Steam). It speaks
-through NVDA: the launcher, the menus, force selection, deployment and the battle map.
+Screen reader access for the Field of Glory games, starting with **Field of Glory II** (Steam). The game speaks
+through **NVDA**: the launcher, every menu, force selection, deployment, the battle map, combat results and the
+end-of-battle screens.
 
-## Installing
+## Installation
 
-1. Download `TheGloriousMod.exe` from the newest release on the
-   [Releases page](https://github.com/Shehryar157/the-glorious-mod/releases).
-2. Run it. Choose the game in the list (only Field of Glory II is available so far), then press **Install**.
-   The installer finds the game through Steam; if it can't, use **Browse** to pick the game's folder.
-3. Start the game as usual.
+1. Download **TheGloriousMod.exe** from the newest release on the
+   [Releases page](https://github.com/Shehryar157/the-glorious-mod/releases). That one file is all you need.
+2. Close Field of Glory II and its launcher, then run TheGloriousMod.exe.
+3. In the list, choose **Field of Glory II**. (Field of Glory II: Medieval, Field of Glory: Empires and Field of
+   Glory: Kingdoms are listed as not available yet.)
+4. Press **Install**. The installer finds the game through Steam; if it can't, press **Browse** and pick the
+   game's folder. A progress bar follows the download, and a message tells you when it's done.
+5. Start the game as usual, with NVDA running.
 
-Run the installer again whenever you want to **Update**, **Reinstall** or **Uninstall**. Close the game and its
-launcher first. The installer never overwrites a `version.dll` that another mod put in the game folder.
+Run TheGloriousMod.exe again whenever you like:
 
-## Playing
+- **Update** downloads the newest release and installs it (it tells you if you're already up to date).
+- **Reinstall** puts the newest release in again, over what's there.
+- **Uninstall** removes every file the mod added.
 
-In battle, press **F1** for the list of keys. In short: Q W E A D Z X C move the cursor over the map, S reads
-the unit, Enter selects a unit or gives an order, N ends the turn (Enter to confirm), T reads the turn and
-scores, O the briefing, R retreats (Enter to confirm), Page Up and Page Down scan through the units.
+The installer needs no internet for a first install (the mod is inside it), never touches a `version.dll` that
+another mod put in the game folder, and asks you to close the game first if it's running. If the game is under
+Program Files, run the installer as administrator.
 
-## How it works
+## What the mod does
 
-`version.dll` is a small loader the game loads at startup; it loads `FoG2Access.dll`, the mod, which reads the
-game's screens and battle from memory using the game's own symbol file and speaks through
-`nvdaControllerClient32.dll` (NVDA's controller client, LGPL). Source: `src/loader`, `src/core`,
-`src/installer`. Building needs [Zig](https://ziglang.org) (`python tools/build.py`); notes on the game's
+- **Launcher:** reads the buttons and the language box; Play Game starts the game.
+- **Menus:** every screen as a list of controls: buttons, on/off and multiple choice settings, sliders, lists,
+  drop-downs and name boxes, with "3 of 9" positions, Home/End and type-to-search. Screens with sections have
+  them as tabs. Texts that don't fit a control (descriptions, briefings, tutorial boxes) are read line by line.
+- **Campaigns and scenarios:** each campaign is its own menu item with its description; locked campaigns say
+  which expansion they need.
+- **Force selection:** each unit type with its cost and quantity; Right buys one, Left sells one, and the
+  points left are read.
+- **Deployment:** squares in the selected unit's deployment area say "Deploy here", others "Cannot deploy
+  here"; Enter places the unit.
+- **The battle map:** a cursor over the grid tells you the unit, terrain, hills and their height, line of sight
+  and coordinates; the orders the game offers on each square (move, charge, shoot, turn...) with their odds; the
+  game's own unit panels; a scanner over all units; announcements of enemy moves, units coming into view, losses,
+  morale changes, combat results and turns, all kept in message buffers to read back.
+- **After the battle:** the result, Final Losses as a table, and the battlefield review.
+
+## What it cannot yet do
+
+- Field of Glory II: Medieval, Field of Glory: Empires and Field of Glory: Kingdoms aren't supported yet.
+- The scenario editor and the multiplayer lobby haven't been made accessible.
+- Some features are new and not yet tested in many battles; screens the mod hasn't seen yet (some campaign
+  and pop-up screens, mods and community scenarios) may read imperfectly. Reports are welcome as issues.
+
+## Keys
+
+In menus, the arrows, Tab, Home, End, Enter, Space and Escape work as you'd expect. These are the mod's keys in
+battle (press **F1** in battle to hear them):
+
+| Key | What it does |
+| --- | --- |
+| Q, W, E, A, D, Z, X, C | Move the cursor (W north, X south, A west, D east, Q E Z C the diagonals) |
+| Ctrl + a cursor key | Move the cursor with the game's detailed tooltips |
+| Alt + a cursor key | Order the selected unit to the next square that way; it stays selected |
+| Enter | Select the unit on the cursor, or give the order there (several orders: a list to choose from) |
+| Alt + Enter | Undo the unit's move |
+| Ctrl + Enter | The unit's information |
+| Escape | Deselect the unit |
+| S | The unit on the cursor: name, AP, men, morale, facing and the game's panel |
+| T | Turn and scores |
+| O | Battle name, date and briefing |
+| N | End the turn: the game asks to confirm; Enter or N confirms, Escape cancels. In the battlefield review: end the review |
+| R | Retreat from the battle: Enter or R confirms, Escape cancels |
+| Page Up, Page Down | Scanner: previous or next unit type |
+| Alt + Page Up, Alt + Page Down | Scanner: previous or next unit of the same type |
+| Ctrl + Page Up, Ctrl + Page Down | Scanner: switch category (your units, enemy units, generals) |
+| Home | Move the cursor to the unit the scanner is on |
+| End | Where the scanner's unit is from the cursor |
+| [ and ] | Previous or next message category |
+| Comma, Period | Older or newer message |
+| Shift + [ or ] | First or last message category |
+| Shift + Comma or Period | Oldest or newest message |
+| L | Unit list; Enter selects the unit |
+| K | Casualties |
+| Tab | The game's next unit that hasn't moved |
+| B | The game's next unit that can shoot |
+| Space | Close a message or proceed |
+| F1 | This key list |
+| F2 | Screenshot |
+
+On the force selection list, **Right** buys one of the unit type and **Left** sells one. In the Final Losses
+table, **Up/Down** move between rows, **Left/Right** between columns, **Home/End** to a row's first or last
+column.
+
+## Scanner
+
+The scanner finds units without moving the cursor over the whole map. It has three categories, which
+**Ctrl + Page Up** and **Ctrl + Page Down** switch between:
+
+- **You:** your army's units, for example "You: Ancient British".
+- **Enemy:** the enemy's units you can see, for example "Enemy: Roman". Units out of your line of sight aren't
+  listed.
+- **Generals:** every general you can see, both sides, each one on its own.
+
+Within a category, units are grouped by type. **Page Up** and **Page Down** go to the previous or next type,
+**Alt + Page Up** and **Alt + Page Down** through the units of that type. Units are sorted nearest first from the
+cursor, and the order is worked out again on every key press, so after you move the cursor the next unit is
+the nearest to where you are now. Each unit is read with its position in its type, where it is from the cursor
+("3 north, 2 east") and the type's position in the category: "Warband 2 of 5, 3 north, 2 east, 1 of 4".
+**Home** moves the cursor onto the unit; **End** repeats where it is.
+
+## How the mod works
+
+For the technically minded:
+
+- **Getting in:** Field of Glory II loads `version.dll` from its own folder at startup, before the Windows one.
+  The mod's `version.dll` is a proxy: it passes the real functions through to Windows and loads the mod,
+  `FoG2Access.dll`, into both the launcher (`autorun.exe`) and the game (`FIELDOFGLORY2.EXE`). It reloads the mod
+  whenever the DLL changes, so a new build takes effect without restarting the game.
+- **Reading the game:** the game ships with its symbol file. At startup the mod uses it, through the game's own
+  `dbghelp.dll`, to look up the addresses of the engine's globals and functions and the layout of its classes
+  (the UI manager, screens, buttons, list boxes, the battle display, units, the map). Nothing is hard-coded to
+  one game version, so patches don't break it unless the engine renames what it uses. The game's scripts' own
+  variables (force selection, the end-turn prompt) are found by name in the script engine.
+- **Menus:** every 16 ms, on the game's own thread, the mod walks the screens that are up and turns their objects
+  into controls by type and position. It presses buttons and selects list entries the way the engine does for a
+  click, so the game's scripts react as they would to the mouse.
+- **The battle map:** the mod hooks the function that works out which square the mouse is over, and puts the
+  keyboard cursor's square there. The game then shows its own tooltips and offers its own orders for that
+  square, which the mod reads, and an order is given by calling the same function a click calls. No mouse,
+  window size or screen resolution is involved, so it works the same whatever your display.
+- **Speech:** through NVDA's controller client (`nvdaControllerClient32.dll`, LGPL; licence in `native/`).
+- **The installer:** a plain Win32 program, so every screen reader reads it. The mod's files are stored inside
+  the exe; Install and Update fetch the newest release's exe from GitHub and take the files out of it.
+
+Building needs [Zig](https://ziglang.org) and Python: `python tools/build.py` builds the mod (and copies it into
+the game, which reloads it), `python tools/build.py release X.Y.Z` publishes a release. Notes on the game's
 internals are in `docs/findings`.
