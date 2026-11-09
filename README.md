@@ -47,8 +47,6 @@ Program Files, run the installer as administrator.
 
 - Field of Glory II: Medieval, Field of Glory: Empires and Field of Glory: Kingdoms aren't supported yet.
 - The scenario editor and the multiplayer lobby haven't been made accessible.
-- Some features are new and not yet tested in many battles; screens the mod hasn't seen yet (some campaign
-  and pop-up screens, mods and community scenarios) may read imperfectly. Reports are welcome as issues.
 
 ## Keys
 
