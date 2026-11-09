@@ -74,7 +74,15 @@
   GetUnitTypeCost(type), units column = fixed+sequestered [+ selected-sequestered / unfixed-sequestered] from the
   script global gForceSelect[item]. Needs reading script globals live (CCScriptInstance +0xC TScriptInstanceGlobals;
   CScriptHelper::FindVar 0x440B50; __TScriptVariable data/type/arrays).
-- Installer draft: src/installer/installer.cpp (postponed by the user).
+- Installer: src/installer/installer.cpp -> build/TheGloriousMod.exe (`build.py installer`). Repo PUBLIC at
+  github.com/Shehryar157/the-glorious-mod (pushed 2026-11-09, branch main). `build.py release X.Y.Z` builds all
+  and publishes tag fog2-vX.Y.Z with version.dll, FoG2Access.dll, nvdaControllerClient32.dll and the installer
+  (the installer takes the newest non-draft release whose tag starts "fog2-"). fog2-v0.1.0 published; assets
+  checked through the API. Installer GUI not yet run by the user. git/gh: E:\code\tools\git\cmd,
+  E:\code\tools\gh\bin (put on PATH for the command). Commit as the user's GitHub noreply address.
+- Deployment: with a unit selected, squares outside its area say "Cannot deploy here" (IDS_TT_CANNOTUNLOAD;
+  no Deploy/Swap order after the pick; mDeployMode != 0). Built, not run (menus don't open while the game is
+  minimized). Without a selection nothing is highlighted for sighted players either.
 
 ## 2026-11-09 — built and verified live (game minimized, keys via sendkeys)
 
