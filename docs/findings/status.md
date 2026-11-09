@@ -77,8 +77,15 @@
 - Installer: src/installer/installer.cpp -> build/TheGloriousMod.exe (`build.py installer`). Repo PUBLIC at
   github.com/Shehryar157/the-glorious-mod (pushed 2026-11-09, branch main). `build.py release X.Y.Z` builds all
   and publishes tag fog2-vX.Y.Z with version.dll, FoG2Access.dll, nvdaControllerClient32.dll and the installer
-  (the installer takes the newest non-draft release whose tag starts "fog2-"). fog2-v0.1.0 published; assets
-  checked through the API. Installer GUI not yet run by the user. git/gh: E:\code\tools\git\cmd,
+  (the installer takes the newest non-draft release whose tag starts "fog2-"). Same day (user: players download
+  ONE file): releases hold only TheGloriousMod.exe; the mod files are appended to it (build.py add_payload:
+  entries {u32 name len, "fog2/<file>", u32 size, data}, footer {u32 first entry offset, "GLORIOUSMOD1"};
+  "fog2/version.txt" = tag). Install/Update download the newest release's exe and unpack it; Install offline
+  uses the running exe's own copy. fog2-v0.1.1 published and its exe checked byte for byte. fog2-v0.1.0 (the
+  old 4-file release) still exists: deleting it was refused as destructive; ask the user. Installer GUI not
+  yet run by the user.
+- Scanner categories now "You: <faction>" / "Enemy: <faction>" (user). Built, not heard.
+- README: Installation, What the mod does, What it cannot yet do, Keys (table), Scanner, How the mod works. git/gh: E:\code\tools\git\cmd,
   E:\code\tools\gh\bin (put on PATH for the command). Commit as the user's GitHub noreply address.
 - Deployment: with a unit selected, squares outside its area say "Cannot deploy here" (IDS_TT_CANNOTUNLOAD;
   no Deploy/Swap order after the pick; mDeployMode != 0). Built, not run (menus don't open while the game is
