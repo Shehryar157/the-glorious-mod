@@ -10,6 +10,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <shobjidl.h>
+#include <shellapi.h>
 #include <winhttp.h>
 #include <tlhelp32.h>
 #include <cstdint>
@@ -46,11 +47,15 @@ static std::vector<Game> games = {
     {L"Field of Glory: Kingdoms", "fogk-", L"fogk", L"", L"", L"", {}, {}, {}, false},
 };
 
-enum { IDC_LIST = 101, IDC_STATUS, IDC_PATH, IDC_BROWSE, IDC_INSTALL, IDC_UPDATE, IDC_UNINSTALL, IDC_PROGRESS, IDC_LOG };
-enum { WM_LOG = WM_APP + 1, WM_PROG, WM_DONE };
+enum { IDC_LIST = 101, IDC_STATUS, IDC_PATH, IDC_BROWSE, IDC_INSTALL, IDC_UPDATE, IDC_UNINSTALL, IDC_PROGRESS, IDC_LOG, IDC_CHANGES };
+enum { WM_LOG = WM_APP + 1, WM_PROG, WM_DONE, WM_RELEASES };
 enum Action { INSTALL, UPDATE, UNINSTALL };
 
-static HWND hwnd, hList, hStatus, hPath, hBrowse, hInstall, hUpdate, hUninstall, hProgress, hLog, hClose, lastFocus;
+static HWND hwnd, hList, hStatus, hPath, hBrowse, hInstall, hUpdate, hUninstall, hProgress, hLog, hClose, hChanges, hChangesLabel, lastFocus;
+// GitHub's release list, fetched once in the background for the Changes box: 0 not yet, 1 fetching, 2 have it, 3 failed.
+static int releasesState;
+static std::string releasesJson;
+static std::wstring releasesError;
 static bool busy;
 static std::wstring paths[4];
 
@@ -259,9 +264,26 @@ static std::string jsonValue(const std::string& j, size_t from, size_t to, const
     while (p < j.size() && (j[p] == ' ' || j[p] == ':' || j[p] == '\n' || j[p] == '\r' || j[p] == '\t')) p++;
     std::string v;
     if (p < j.size() && j[p] == '"') {
+        // JSON string escapes: release notes carry \r\n, \", \\ and \uXXXX (kept as UTF-8).
         for (p++; p < j.size() && j[p] != '"'; p++) {
-            if (j[p] == '\\' && p + 1 < j.size()) p++;
-            v += j[p];
+            if (j[p] != '\\' || p + 1 >= j.size()) { v += j[p]; continue; }
+            char c = j[++p];
+            if (c == 'n') v += '\n';
+            else if (c == 'r') v += '\r';
+            else if (c == 't') v += '\t';
+            else if (c == 'u' && p + 4 < j.size()) {
+                unsigned cp = (unsigned)strtoul(j.substr(p + 1, 4).c_str(), nullptr, 16);
+                p += 4;
+                if (cp >= 0xD800 && cp < 0xDC00 && p + 6 < j.size() && j[p + 1] == '\\' && j[p + 2] == 'u') {
+                    unsigned lo = (unsigned)strtoul(j.substr(p + 3, 4).c_str(), nullptr, 16);
+                    cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+                    p += 6;
+                }
+                if (cp < 0x80) v += (char)cp;
+                else if (cp < 0x800) { v += (char)(0xC0 | cp >> 6); v += (char)(0x80 | (cp & 0x3F)); }
+                else if (cp < 0x10000) { v += (char)(0xE0 | cp >> 12); v += (char)(0x80 | (cp >> 6 & 0x3F)); v += (char)(0x80 | (cp & 0x3F)); }
+                else { v += (char)(0xF0 | cp >> 18); v += (char)(0x80 | (cp >> 12 & 0x3F)); v += (char)(0x80 | (cp >> 6 & 0x3F)); v += (char)(0x80 | (cp & 0x3F)); }
+            } else v += c; // \" \\ \/
         }
     } else {
         while (p < j.size() && j[p] != ',' && j[p] != '}' && j[p] != ']' && j[p] != ' ' && j[p] != '\n') v += j[p++];
@@ -296,6 +318,40 @@ static bool newestRelease(const std::string& j, const char* prefix, std::wstring
         return true;
     }
     return false;
+}
+
+// What an update would bring (user, 2026-11-11): the notes of every release newer than the installed one,
+// newest first; with nothing installed, the newest release's (what Install gives). build.py puts a version's
+// CHANGELOG.md section first in its release notes and ends it with END_OF_CHANGES; the installer shows the
+// notes up to there (all of them for older releases without the marker).
+static const char END_OF_CHANGES[] = "<!-- end of changes -->";
+
+static std::wstring changesText(const std::string& j, const Game& g, const std::wstring& installed) {
+    std::vector<size_t> starts;
+    for (size_t at = j.find("\"tag_name\""); at != std::string::npos; at = j.find("\"tag_name\"", at + 10)) starts.push_back(at);
+    std::wstring out, newest;
+    for (size_t i = 0; i < starts.size(); i++) {
+        size_t from = starts[i], to = i + 1 < starts.size() ? starts[i + 1] : j.size();
+        std::string t = jsonValue(j, from, to, "tag_name");
+        if (t.compare(0, strlen(g.tagPrefix), g.tagPrefix) != 0) continue;
+        if (jsonValue(j, from, to, "draft") == "true" || jsonValue(j, from, to, "prerelease") == "true") continue;
+        std::wstring tag = widen(t);
+        if (tag == installed) break;
+        if (newest.empty()) newest = tag;
+        std::string body = jsonValue(j, from, to, "body");
+        size_t cut = body.find(END_OF_CHANGES);
+        if (cut != std::string::npos) body.erase(cut);
+        std::wstring notes;
+        for (wchar_t c : widen(body))
+            if (c != L'\r') notes += c == L'\n' ? std::wstring(L"\r\n") : std::wstring(1, c);
+        while (!notes.empty() && iswspace(notes.back())) notes.pop_back();
+        out += (out.empty() ? L"" : L"\r\n\r\n") + tag + L":\r\n" + (notes.empty() ? L"No notes for this version." : notes);
+        if (installed.empty()) break; // nothing installed: Install gives the newest one
+    }
+    if (out.empty())
+        return newest.empty() && !installed.empty() ? L"You have the newest version, " + installed + L". There is nothing new to update to."
+                                                    : L"There is no release for " + std::wstring(g.name) + L" yet.";
+    return out;
 }
 
 // ---------- the jobs ----------
@@ -462,6 +518,34 @@ static int selected() {
     return i < 0 ? 0 : i;
 }
 
+static DWORD WINAPI fetchReleases(void*) {
+    std::string* json = new std::string;
+    std::wstring err;
+    bool ok = httpGet(L"https://api.github.com/repos/" REPO_PATH L"/releases?per_page=50", true, *json, nullptr, err);
+    if (!ok) *json = narrow(err);
+    PostMessageW(hwnd, WM_RELEASES, ok, (LPARAM)json);
+    return 0;
+}
+
+// The Changes box for the chosen game and what's installed (or "" for a game not installed / not found).
+// Only there when the mod is installed, i.e. when there is something to update (user, 2026-11-11): for a
+// first install, the box and its label are hidden (Tab skips hidden controls).
+static void updateChanges(const Game& g, const std::wstring& installed) {
+    bool show = g.available && !installed.empty();
+    ShowWindow(hChangesLabel, show ? SW_SHOW : SW_HIDE);
+    ShowWindow(hChanges, show ? SW_SHOW : SW_HIDE);
+    std::wstring text;
+    if (!show) text = L"";
+    else if (releasesState == 0 || releasesState == 1) text = L"Checking GitHub for changes...";
+    else if (releasesState == 3) text = L"Couldn't reach GitHub to check for changes: " + releasesError + L".";
+    else text = changesText(releasesJson, g, installed == L"development build" ? L"" : installed);
+    SetWindowTextW(hChanges, text.c_str());
+    if (show && releasesState == 0) {
+        releasesState = 1;
+        CloseHandle(CreateThread(nullptr, 0, fetchReleases, nullptr, 0, nullptr));
+    }
+}
+
 static void refresh() {
     int i = selected();
     const Game& g = games[i];
@@ -483,6 +567,7 @@ static void refresh() {
     }
     SetWindowTextW(hStatus, status.c_str());
     SetWindowTextW(hPath, dir.c_str());
+    updateChanges(g, dir.empty() ? L"" : installedVersion(g, dir));
     SetWindowTextW(hInstall, installed ? L"&Reinstall" : L"&Install");
     EnableWindow(hBrowse, browse);
     EnableWindow(hInstall, install);
@@ -539,6 +624,15 @@ static HWND add(const wchar_t* cls, const wchar_t* text, DWORD style, int x, int
     return CreateWindowExW(ex, cls, text, WS_CHILD | WS_VISIBLE | style, x, y, w, h, hwnd, (HMENU)(INT_PTR)id, GetModuleHandleW(nullptr), nullptr);
 }
 
+static WNDPROC editProc;
+
+static LRESULT CALLBACK readOnlyBoxProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
+    LRESULT r = CallWindowProcW(editProc, h, msg, wp, lp);
+    if (msg == WM_GETDLGCODE)
+        r &= ~(DLGC_WANTALLKEYS | DLGC_WANTTAB | DLGC_HASSETSEL); // HASSETSEL: don't select all on arrival
+    return r;
+}
+
 static BOOL CALLBACK setFont(HWND h, LPARAM font) {
     SendMessageW(h, WM_SETFONT, (WPARAM)font, TRUE);
     return TRUE;
@@ -553,15 +647,23 @@ static void createControls() {
     add(L"STATIC", L"Game &folder", 0, 12, 168, 480, 20, -1);
     hPath = add(L"EDIT", L"", WS_TABSTOP | ES_READONLY | ES_AUTOHSCROLL, 12, 188, 380, 24, IDC_PATH, WS_EX_CLIENTEDGE);
     hBrowse = add(L"BUTTON", L"&Browse...", WS_TABSTOP, 400, 187, 92, 26, IDC_BROWSE);
-    hInstall = add(L"BUTTON", L"&Install", WS_TABSTOP, 12, 226, 112, 30, IDC_INSTALL);
-    hUpdate = add(L"BUTTON", L"&Update", WS_TABSTOP, 134, 226, 112, 30, IDC_UPDATE);
-    hUninstall = add(L"BUTTON", L"U&ninstall", WS_TABSTOP, 256, 226, 112, 30, IDC_UNINSTALL);
-    hClose = add(L"BUTTON", L"&Close", WS_TABSTOP, 380, 226, 112, 30, IDCANCEL);
-    add(L"STATIC", L"Progress", 0, 12, 266, 480, 20, -1);
-    hProgress = add(PROGRESS_CLASSW, L"Progress", 0, 12, 286, 480, 20, IDC_PROGRESS);
+    // What Install / Update would bring, read only, before the buttons (user, 2026-11-11).
+    hChangesLabel = add(L"STATIC", L"C&hanges in the version you would get", 0, 12, 220, 480, 20, -1);
+    hChanges = add(L"EDIT", L"", WS_TABSTOP | WS_VSCROLL | ES_READONLY | ES_MULTILINE | ES_AUTOVSCROLL, 12, 240, 480, 130, IDC_CHANGES, WS_EX_CLIENTEDGE);
+    const int dy = 156; // everything below moved down for the Changes box
+    hInstall = add(L"BUTTON", L"&Install", WS_TABSTOP, 12, 226 + dy, 112, 30, IDC_INSTALL);
+    hUpdate = add(L"BUTTON", L"&Update", WS_TABSTOP, 134, 226 + dy, 112, 30, IDC_UPDATE);
+    hUninstall = add(L"BUTTON", L"U&ninstall", WS_TABSTOP, 256, 226 + dy, 112, 30, IDC_UNINSTALL);
+    hClose = add(L"BUTTON", L"&Close", WS_TABSTOP, 380, 226 + dy, 112, 30, IDCANCEL);
+    add(L"STATIC", L"Progress", 0, 12, 266 + dy, 480, 20, -1);
+    hProgress = add(PROGRESS_CLASSW, L"Progress", 0, 12, 286 + dy, 480, 20, IDC_PROGRESS);
     SendMessageW(hProgress, PBM_SETRANGE32, 0, 1000);
-    add(L"STATIC", L"&Log", 0, 12, 314, 480, 20, -1);
-    hLog = add(L"EDIT", L"", WS_TABSTOP | WS_VSCROLL | ES_READONLY | ES_MULTILINE | ES_AUTOVSCROLL, 12, 334, 480, 120, IDC_LOG, WS_EX_CLIENTEDGE);
+    add(L"STATIC", L"&Log", 0, 12, 314 + dy, 480, 20, -1);
+    hLog = add(L"EDIT", L"", WS_TABSTOP | WS_VSCROLL | ES_READONLY | ES_MULTILINE | ES_AUTOVSCROLL, 12, 334 + dy, 480, 120, IDC_LOG, WS_EX_CLIENTEDGE);
+    // A multiline edit asks the dialog manager for every key, Tab included, so Tab would stay in it; these
+    // boxes are read only, so Tab and Shift+Tab move on as everywhere else.
+    for (HWND box : {hChanges, hLog})
+        editProc = (WNDPROC)SetWindowLongPtrW(box, GWLP_WNDPROC, (LONG_PTR)readOnlyBoxProc);
 
     NONCLIENTMETRICSW ncm{sizeof ncm};
     SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof ncm, &ncm, 0);
@@ -607,6 +709,15 @@ static LRESULT CALLBACK wndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_PROG:
         SendMessageW(hProgress, PBM_SETPOS, wp, 0);
         return 0;
+    case WM_RELEASES: {
+        std::string* json = (std::string*)lp;
+        releasesState = wp ? 2 : 3;
+        if (wp) releasesJson.swap(*json);
+        else releasesError = widen(*json);
+        delete json;
+        refresh();
+        return 0;
+    }
     case WM_DONE: {
         std::wstring* s = (std::wstring*)lp;
         appendLog(*s);
@@ -631,6 +742,19 @@ static LRESULT CALLBACK wndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
 }
 
 int WINAPI WinMain(HINSTANCE inst, HINSTANCE, LPSTR, int show) {
+    // Test mode, no window: TheGloriousMod.exe --changes-test <out file> [installed tag] writes the Changes
+    // box's text for Field of Glory II as UTF-8.
+    int argc = 0;
+    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (argv && argc >= 3 && wcscmp(argv[1], L"--changes-test") == 0) {
+        std::string json;
+        std::wstring err;
+        std::wstring text = httpGet(L"https://api.github.com/repos/" REPO_PATH L"/releases?per_page=50", true, json, nullptr, err)
+                                ? changesText(json, games[0], argc >= 4 ? argv[3] : L"")
+                                : L"error: " + err;
+        writeFile(argv[2], narrow(text));
+        return 0;
+    }
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     INITCOMMONCONTROLSEX icc{sizeof icc, ICC_PROGRESS_CLASS};
     InitCommonControlsEx(&icc);
@@ -642,7 +766,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE, LPSTR, int show) {
     wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
     wc.lpszClassName = L"TheGloriousModInstaller";
     RegisterClassW(&wc);
-    RECT r{0, 0, 504, 466};
+    RECT r{0, 0, 504, 466 + 156};
     DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
     AdjustWindowRectEx(&r, style, FALSE, WS_EX_CONTROLPARENT);
     CreateWindowExW(WS_EX_CONTROLPARENT, wc.lpszClassName, TITLE, style, CW_USEDEFAULT, CW_USEDEFAULT,

@@ -107,14 +107,37 @@ def add_payload(tag):
     print(f"put {len(files)} files ({tag}) inside {INSTALLER}")
 
 
+END_OF_CHANGES = "<!-- end of changes -->"  # installer.cpp END_OF_CHANGES: the Changes box stops here
+
+
+def changelog_section(tag):
+    """The lines under '## <tag>' in CHANGELOG.md, up to the next '## ' heading; '' if there's none."""
+    path = os.path.join(ROOT, "CHANGELOG.md")
+    if not os.path.exists(path):
+        return ""
+    out, inside = [], False
+    for line in open(path, encoding="utf-8").read().splitlines():
+        if line.startswith("## "):
+            inside = line[3:].strip() == tag
+            continue
+        if inside:
+            out.append(line)
+    return "\n".join(out).strip()
+
+
 def release(version):
     compile_dll(LOADER, "loader", [os.path.join(ROOT, "src", "loader", "version.def")])
     build_mod()
     build_installer()
     tag = f"fog2-v{version}"
+    changes = changelog_section(tag)
+    if not changes:
+        sys.exit(f"CHANGELOG.md has no '## {tag}' section: write what changed first (the installer shows it)")
     add_payload(tag)
-    # One download for players (user, 2026-11-09): the release holds only the installer.
-    notes = (f"Field of Glory II screen reader mod {version}.\n\n"
+    # One download for players (user, 2026-11-09): the release holds only the installer. The notes start
+    # with the CHANGELOG section, which the installer's Changes box shows up to END_OF_CHANGES (user,
+    # 2026-11-11); the install line after it is for people reading the release page.
+    notes = (changes + "\n\n" + END_OF_CHANGES + "\n\n"
              "Download TheGloriousMod.exe and run it: choose Field of Glory II, then Install. "
              "Run it again later to update, reinstall or uninstall.")
     subprocess.run([GH, "release", "create", tag, INSTALLER, "--repo", REPO,

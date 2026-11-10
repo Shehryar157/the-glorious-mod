@@ -17,7 +17,9 @@ end-of-battle screens.
 
 Run TheGloriousMod.exe again whenever you like:
 
-- **Update** downloads the newest release and installs it (it tells you if you're already up to date).
+- **Update** downloads the newest release and installs it (it tells you if you're already up to date). Before
+  the buttons, the **Changes** box lists what's new in every version you'd get; it only appears once the mod is
+  installed.
 - **Reinstall** puts the newest release in again, over what's there.
 - **Uninstall** removes every file the mod added.
 
