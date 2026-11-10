@@ -1107,7 +1107,7 @@ std::vector<Group> groups(const Map &m, int side)
     unsigned n = at<unsigned>(s, L.side_unit_count);
     for (unsigned i = 0; i < n && i < 256; i++) {
         char *u = s + L.side_units + i * L.unit_size;
-        if (!visible(m, u))
+        if (!visible(m, u) || parked(m, u)) // units waiting off the battlefield: not scanned (user, 2026-11-10)
             continue;
         Unit unit{u, side, at<int>(u, L.unit_tile), at<int>(u, L.unit_tile + 4), unit_name(u)};
         size_t g = 0;
@@ -1164,8 +1164,6 @@ void speak_item(const std::vector<Group> &gs, size_t g, size_t u, bool with_cate
     s += gs[g].name;
     if (scan_cat != GENERALS)
         s += L" " + std::to_wstring(u + 1) + L" of " + std::to_wstring(gs[g].units.size());
-    if (parked(unit.obj))
-        s += L", not available";
     if (is_selected(unit.obj))
         s += L", selected";
     s += L", " + offset(unit.x, unit.y) + L", " + std::to_wstring(g + 1) + L" of " + std::to_wstring(gs.size());
