@@ -93,9 +93,16 @@
     game's text. Built, not run.
   - Choice values now add the chosen button's tooltip when its text is the value (Options.txt has 53 tooltips,
     e.g. "Turn on detailed popup close combat reports"). Built, not run.
-  - Crash after Quick Battles -> module "Rise of Rome": not reproduced; asked for logs (game: Documents\My
-    Games\FieldOfGlory2\error.log, error_trace.txt; mod: game folder FoG2Access.log/.log.old,
-    FoG2Access_loader.log) and whether it crashes with the mod uninstalled.
+  - Crash after Quick Battles -> module "Rise of Rome" (tester's error*.log: EXCEPTION C0000005 at
+    0x....D150, nearest export "mod_stop", stack TranslateMessage -> WH_GETMESSAGE hook): the release DLL
+    (extracted from TheGloriousMod.exe, rebuilt from the tag's commit with -g: same layout, 440 bytes differ)
+    puts RVA 0x3D150 in strnlen, i.e. eng::name() on a freed UI object: switching module rebuilds every screen
+    while the mod's tick / keys still hold old pointers. One C000001D (jump into the middle of an
+    instruction, RVA 0x9B01) likely the same. Fix: eng::guarded() (vectored handler + __builtin_setjmp /
+    __builtin_longjmp, fs:0 restored; only faults inside our DLL on the guarded thread) around battle_tick,
+    refresh and the key handling; a caught fault -> forget_screen() + 500 ms pause. Guard tested in a
+    standalone program (1000 faults caught, SEH head intact). Released as fog2-v0.1.2; the crash itself
+    not reproduced here.
   - "No custom campaign": the generator is Campaigns\2MPSRiseOfRome, listed as "Field of Glory II Campaigns"
     (multi-part skirmish, MultiBattleCampaignUI.txt setup screen: never seen live).
 - Scanner categories now "You: <faction>" / "Enemy: <faction>" (user). Built, not heard.
