@@ -234,6 +234,7 @@ std::wstring entry(void *list, int index)
 // Total 8". Sides by the names (…1 / ENEMY / BR_ = side 1, …0 / FRIENDLY / BR2_ = side 0), left panel first.
 std::vector<Item> results_table(std::vector<El> &els)
 {
+    eng::stage = "menus.results";
     std::vector<Item> out;
     std::vector<El *> side[2];
     for (El &e : els) {
@@ -327,6 +328,7 @@ std::vector<Item> results_table(std::vector<El> &els)
 
 std::vector<Item> build(std::wstring &title_out)
 {
+    eng::stage = "menus.build";
     std::vector<El> els;
     char *ui = *(char **)eng::ui_manager_ptr;
     if (!ui)
@@ -609,8 +611,12 @@ std::vector<Item> build(std::wstring &title_out)
                     placed.push_back({key + (int)b->box.left / 10, it});
                 }
                 if (labelled.size() == 1 && !texts.empty()) {
-                    // The row's text names its only button ("Game Speed").
+                    // The row's text names its only button ("Game Speed"). A tooltip that only repeats it
+                    // is left out ("Pick your side, Ancient British, Pick your side", 2026-11-10).
                     Item &it = placed.back().second;
+                    El *b = labelled[0];
+                    if (!b->text.empty() && b->tip == join(texts))
+                        it.name = b->text;
                     it.name = join(texts) + L", " + it.name;
                 } else if (labelled.size() > 1) {
                     for (El *t : texts) {
@@ -772,6 +778,7 @@ void watch_texts();
 
 void announce(size_t i, bool heading, bool opening = false)
 {
+    eng::stage = "menus.announce";
     settle_at = 0;
     if (items[i].type == TABLE && current != items[i].obj)
         table_row = table_col = 0; // coming into the table: its first cell
@@ -822,6 +829,7 @@ void move_to(size_t from, size_t to)
 // Timer: speak a new screen, or the current control's new value after a press.
 void refresh()
 {
+    eng::stage = "menus.refresh";
     std::wstring fresh_title;
     std::vector<Item> fresh = build(fresh_title);
     bool new_title = fresh_title != title;
@@ -832,7 +840,20 @@ void refresh()
     size_t old = index_of(current);
     std::wstring old_speech = old != SIZE_MAX ? items[old].speech : L"";
     std::wstring old_text = old != SIZE_MAX ? items[old].text : L"";
+    // A list a button just opened on the same screen (Quick Battles' Pick your side / Pick enemy side /
+    // Pick conflict show a list panel beside them; clicking an entry chooses it): go into it
+    // (2026-11-10: nothing was said and the user didn't know a list had opened).
+    size_t opened = SIZE_MAX;
+    if (!same && GetTickCount() - press_at < 1500)
+        for (size_t k = 0; k < fresh.size() && opened == SIZE_MAX; k++)
+            if (fresh[k].type == LIST && !at<bool>(fresh[k].obj, L.list_dropdown) &&
+                std::none_of(items.begin(), items.end(), [&](const Item &o) { return o.obj == fresh[k].obj; }))
+                opened = k;
     items.swap(fresh);
+    if (opened != SIZE_MAX && index_of(current) != SIZE_MAX) {
+        announce(opened, true);
+        return;
+    }
     // A new screen is announced as a whole. Controls coming or going on the same screen (Autofill
     // shows a Decrease Force button) keep the watch: the control we're on is still there.
     if (!same && index_of(current) == SIZE_MAX)
@@ -1012,6 +1033,7 @@ bool table_key(const Item &t, WPARAM vk, bool act)
 
 bool list_key(const Item &it, WPARAM vk, bool act)
 {
+    eng::stage = "menus.list_key";
     void *list = it.obj;
     int n = eng::list_count(list), sel = at<int>(list, L.list_selected), to;
     if (n <= 0)
@@ -1079,6 +1101,7 @@ void type_search(wchar_t c, size_t i)
 // battle's / the game's (the system menu).
 bool escape(bool act)
 {
+    eng::stage = "menus.escape";
     if (battle_owns())
         return false;
     static const wchar_t *const names[] = {L"CLOSE", L"BACK", L"CANCEL", L"OK", L"EXIT", L"DONE"};
@@ -1115,13 +1138,16 @@ bool escape(bool act)
 // object's name ending, else its label; nullptr if the screen has none.
 void *start_button()
 {
+    eng::stage = "menus.start_button";
     static const wchar_t *const names[] = {L"ACCEPT", L"LAUNCH", L"START", L"PLAY"};
     static const wchar_t *const words[] = {L"accept", L"launch", L"start", L"play"};
     for (const wchar_t *want : names)
         for (Item &it : items) {
+            if (it.type != BUTTON)
+                continue; // LINE / ENTRY / TABLE identities are made-up numbers, not objects to read
             std::wstring n = eng::name(it.obj);
             size_t len = wcslen(want);
-            if (it.type == BUTTON && n.size() >= len && n.compare(n.size() - len, len, want) == 0)
+            if (n.size() >= len && n.compare(n.size() - len, len, want) == 0)
                 return it.obj;
         }
     for (const wchar_t *want : words)
@@ -1141,6 +1167,7 @@ void *start_button()
 // called for keys that are only being peeked at).
 bool key(WPARAM vk, bool act)
 {
+    eng::stage = "menus.key";
     if (items.empty() || GetKeyState(VK_CONTROL) < 0 || GetKeyState(VK_MENU) < 0)
         return false;
     // On the battle map Tab is the game's "next unit that hasn't moved" (user, 2026-11-07): it used to

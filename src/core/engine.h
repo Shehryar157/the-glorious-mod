@@ -103,6 +103,8 @@ bool call_script(void *obj, const char *function, const int *args, int count);
 // is caught instead of crashing the game. False if one was caught (logged). Faults in the game's code
 // are left alone. guard_start / guard_stop: install / remove the handler (game thread only uses it).
 bool guarded(void (*fn)(void *), void *ctx);
+// Where the mod is (a short fixed label set as code runs), logged with a caught fault.
+extern const char *volatile stage;
 void guard_start();
 void guard_stop();
 

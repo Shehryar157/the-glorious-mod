@@ -1354,6 +1354,7 @@ void battle_free()
 
 void battle_tick()
 {
+    eng::stage = "battle.tick";
     owns = compute_owns();
     if (!owns)
         return;
@@ -1711,6 +1712,7 @@ bool help_key(WPARAM vk, bool act)
 
 bool battle_key(WPARAM vk, bool act)
 {
+    eng::stage = "battle.key";
     if (!owns || cur_x < 0) {
         help_at = -1;
         return false;

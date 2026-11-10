@@ -337,6 +337,7 @@ std::wstring kstring(const void *base, int offset)
 // entry and jumps back to guarded() (__builtin_setjmp / __builtin_longjmp: only the frame and stack
 // pointers and the resume address, no unwinding). The mod's frames use DWARF unwinding, so no SEH
 // records of ours are skipped; game code we called has returned by then (faults there aren't ours).
+const char *volatile stage = "";
 static void *jump_buf[5];
 static volatile bool guard_on;
 static DWORD guard_thread, guard_seh, fault_code;
@@ -396,7 +397,8 @@ bool guarded(void (*fn)(void *), void *ctx)
     guard_thread = GetCurrentThreadId();
     guard_seh = read_seh();
     if (__builtin_setjmp(jump_buf)) {
-        logf("caught a fault in the mod at +0x%x (code %08lx); carrying on", (unsigned)fault_at, fault_code);
+        logf("caught a fault in the mod at +0x%x (code %08lx) in %s; carrying on", (unsigned)fault_at, fault_code,
+             (const char *)stage);
         return false;
     }
     guard_on = true;
