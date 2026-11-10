@@ -312,7 +312,13 @@ bool visible(const Map &m, char *unit)
     if (x < 0 || y < 0 || x >= m.w || y >= m.h)
         return false;
     int me = my_side();
-    return side == me || seen(m, x, y);
+    // The off-map predeployment area (ForceSelectionTools.bsf): units waiting there sit in the map's border
+    // rows, unseen even by their own side, and the game won't select them (tried 2026-11-10). They're not
+    // on the battlefield, so not on the cursor, in the scanner or the unit list.
+    bool border = x == 0 || y == 0 || x == m.w - 1 || y == m.h - 1;
+    if (side == me)
+        return !border || seen(m, x, y);
+    return seen(m, x, y);
 }
 
 char *unit_at(const Map &m, int x, int y)
