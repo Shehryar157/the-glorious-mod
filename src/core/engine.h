@@ -98,6 +98,14 @@ void clear_focus();
 // script declares its parameters. False if the object has no script or no such function.
 bool call_script(void *obj, const char *function, const int *args, int count);
 
+// Run fn(ctx) so that a fault inside the mod's own code (reading a game object that was just freed: the
+// game rebuilds every screen when a module is switched, tester crash 2026-11-10 in strnlen from name())
+// is caught instead of crashing the game. False if one was caught (logged). Faults in the game's code
+// are left alone. guard_start / guard_stop: install / remove the handler (game thread only uses it).
+bool guarded(void (*fn)(void *), void *ctx);
+void guard_start();
+void guard_stop();
+
 // A global variable of an object's script, by name: its data (an int, or the first element of an
 // array), or null. A struct type's member offset and the struct's size, by name: -1 if absent.
 void *script_var(void *obj, const char *name);

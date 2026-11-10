@@ -331,6 +331,80 @@ std::wstring kstring(const void *base, int offset)
     return std::wstring(text, wcsnlen(text, length));
 }
 
+// --- the guard ---
+// A vectored handler sees the fault first; when it is in this DLL (the mod's code or the C library linked
+// into it) on the thread inside guarded(), it puts back the thread's SEH chain head (fs:0) as it was on
+// entry and jumps back to guarded() (__builtin_setjmp / __builtin_longjmp: only the frame and stack
+// pointers and the resume address, no unwinding). The mod's frames use DWARF unwinding, so no SEH
+// records of ours are skipped; game code we called has returned by then (faults there aren't ours).
+static void *jump_buf[5];
+static volatile bool guard_on;
+static DWORD guard_thread, guard_seh, fault_code;
+static uintptr_t self_lo, self_hi, fault_at;
+static PVOID veh;
+
+static DWORD read_seh()
+{
+    DWORD v;
+    __asm__ volatile("movl %%fs:0, %0" : "=r"(v));
+    return v;
+}
+
+static void write_seh(DWORD v) { __asm__ volatile("movl %0, %%fs:0" : : "r"(v) : "memory"); }
+
+static LONG CALLBACK on_fault(EXCEPTION_POINTERS *e)
+{
+    DWORD code = e->ExceptionRecord->ExceptionCode;
+    uintptr_t at = (uintptr_t)e->ExceptionRecord->ExceptionAddress;
+    if (!guard_on || GetCurrentThreadId() != guard_thread || at < self_lo || at >= self_hi ||
+        (code != EXCEPTION_ACCESS_VIOLATION && code != EXCEPTION_ILLEGAL_INSTRUCTION))
+        return EXCEPTION_CONTINUE_SEARCH;
+    guard_on = false;
+    fault_code = code;
+    fault_at = at - self_lo;
+    write_seh(guard_seh);
+    __builtin_longjmp(jump_buf, 1);
+}
+
+void guard_start()
+{
+    HMODULE self = nullptr;
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       (LPCWSTR)&on_fault, &self);
+    if (!self)
+        return;
+    const char *base = (const char *)self;
+    const IMAGE_NT_HEADERS *nt = (const IMAGE_NT_HEADERS *)(base + ((const IMAGE_DOS_HEADER *)base)->e_lfanew);
+    self_lo = (uintptr_t)base;
+    self_hi = self_lo + nt->OptionalHeader.SizeOfImage;
+    veh = AddVectoredExceptionHandler(1, on_fault);
+}
+
+void guard_stop()
+{
+    if (veh)
+        RemoveVectoredExceptionHandler(veh);
+    veh = nullptr;
+}
+
+bool guarded(void (*fn)(void *), void *ctx)
+{
+    if (guard_on || !veh) { // nested, or no handler: just run it
+        fn(ctx);
+        return true;
+    }
+    guard_thread = GetCurrentThreadId();
+    guard_seh = read_seh();
+    if (__builtin_setjmp(jump_buf)) {
+        logf("caught a fault in the mod at +0x%x (code %08lx); carrying on", (unsigned)fault_at, fault_code);
+        return false;
+    }
+    guard_on = true;
+    fn(ctx);
+    guard_on = false;
+    return true;
+}
+
 std::wstring name(const void *obj)
 {
     const char *n = (const char *)obj + L.obj_name;

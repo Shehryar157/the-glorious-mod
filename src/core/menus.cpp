@@ -1191,6 +1191,24 @@ bool key(WPARAM vk, bool act)
     return true;
 }
 
+// After a caught fault (a screen freed under us while the game rebuilds its screens, as when a module is
+// switched): forget the screen and its objects, and leave the game alone for half a second.
+DWORD pause_until;
+
+void forget_screen()
+{
+    items.clear();
+    current = nullptr;
+    title.clear();
+    texts_now.clear();
+    texts_before.clear();
+    lines_built.clear();
+    lines_said.clear();
+    watch_until = 0;
+    settle_at = 0;
+    pause_until = GetTickCount() + 500;
+}
+
 LRESULT CALLBACK on_message(int code, WPARAM remove, LPARAM lp)
 {
     busy++;
@@ -1210,12 +1228,13 @@ LRESULT CALLBACK on_message(int code, WPARAM remove, LPARAM lp)
             SetEvent(stopped);
             msg->message = WM_NULL;
         } else if (msg->message == WM_TIMER && !msg->hwnd && msg->wParam == timer && timer) {
-            if (ready) {
+            if (ready && GetTickCount() >= pause_until) {
                 // Timing: a slow tick would delay the game's own frame; log any over 4 ms.
                 LARGE_INTEGER t0, t1, f;
                 QueryPerformanceCounter(&t0);
-                battle_tick();
-                refresh();
+                if (!eng::guarded([](void *) { battle_tick(); }, nullptr) ||
+                    !eng::guarded([](void *) { refresh(); }, nullptr))
+                    forget_screen();
                 QueryPerformanceCounter(&t1);
                 QueryPerformanceFrequency(&f);
                 double ms = (t1.QuadPart - t0.QuadPart) * 1000.0 / f.QuadPart;
@@ -1231,15 +1250,23 @@ LRESULT CALLBACK on_message(int code, WPARAM remove, LPARAM lp)
             msg->message = WM_NULL;
         }
     }
-    if (code == HC_ACTION && (msg->message == WM_KEYDOWN || msg->message == WM_SYSKEYDOWN) && ready) {
-        if (editing()) {
-            // A name being typed (the save box, also from the battle's system menu): letters are text, not battle keys.
-            if (msg->message == WM_KEYDOWN && key(msg->wParam, remove == PM_REMOVE))
-                msg->message = WM_NULL;
-        } else if (battle_key(msg->wParam, remove == PM_REMOVE) ||
-                   (msg->message == WM_KEYDOWN && key(msg->wParam, remove == PM_REMOVE)) || battle_blocks(msg->wParam)) {
+    if (code == HC_ACTION && (msg->message == WM_KEYDOWN || msg->message == WM_SYSKEYDOWN) && ready &&
+        GetTickCount() >= pause_until) {
+        struct KeyCall { MSG *msg; bool act, took; } call{msg, remove == PM_REMOVE, false};
+        bool ok = eng::guarded([](void *p) {
+            KeyCall &c = *(KeyCall *)p;
+            if (editing()) {
+                // A name being typed (the save box, also from the battle's system menu): letters are text, not battle keys.
+                c.took = c.msg->message == WM_KEYDOWN && key(c.msg->wParam, c.act);
+            } else {
+                c.took = battle_key(c.msg->wParam, c.act) ||
+                         (c.msg->message == WM_KEYDOWN && key(c.msg->wParam, c.act)) || battle_blocks(c.msg->wParam);
+            }
+        }, &call);
+        if (!ok)
+            forget_screen();
+        else if (call.took)
             msg->message = WM_NULL;
-        }
     }
     LRESULT r = CallNextHookEx(nullptr, code, remove, lp);
     busy--;
@@ -1270,6 +1297,7 @@ void menus_start(const std::wstring &dir)
         return;
     game_thread = main_thread();
     ready = eng::init(dir);
+    eng::guard_start();
     stopped = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     HMODULE self;
     GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
@@ -1302,6 +1330,7 @@ void menus_stop()
     hook = nullptr;
     while (busy > 0)
         Sleep(1);
+    eng::guard_stop(); // before the DLL goes: the handler is in it
     battle_free();
     if (stopped)
         CloseHandle(stopped);
