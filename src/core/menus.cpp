@@ -382,7 +382,22 @@ std::vector<Item> build(std::wstring &title_out)
                 break;
             }
     }
-    auto counts = [](const El &e) { return !e.used && (is_bar(e) || is_list(e) || is_edit(e) || (is_button(e) && (!button_label(e).empty() || indented(e.obj)))); };
+    // The difficulty row (Options.txt OptionsDifficultyButton0-5): six icons without text or tooltip, the chosen one
+    // pressed in. Unlabelled buttons count as decoration, so the row's size changed with the choice (4, 5, 6) and
+    // the control lost its place; its value text (OptionsDifficultyText) attached to the next control (tester,
+    // 2026-11-10). All six count; each is named by its level (UITools.BSF / OPTIONS.BSF: button n = DiffMode n).
+    auto difficulty = [](const El &e) {
+        std::wstring n = eng::name(e.obj);
+        size_t at = n.find(L"DIFFICULTYBUTTON");
+        return is_button(e) && at != std::wstring::npos && n.size() == at + 17 && n.back() >= L'0' && n.back() <= L'5';
+    };
+    for (El &e : els)
+        if ((e.kinds & eng::TEXT) && !is_button(e)) {
+            std::wstring n = eng::name(e.obj);
+            if (n.size() > 14 && n.compare(n.size() - 14, 14, L"DIFFICULTYTEXT") == 0)
+                e.used = true; // the chosen level's name: the choice says it
+        }
+    auto counts = [&](const El &e) { return !e.used && (is_bar(e) || is_list(e) || is_edit(e) || (is_button(e) && (!button_label(e).empty() || indented(e.obj) || difficulty(e)))); };
 
     // Blocks ("columns"): controls linked when within 40 px sideways and 60 px
     // up or down of each other. Settings has two side by side; a button
@@ -557,6 +572,15 @@ std::vector<Item> build(std::wstring &title_out)
                     it.choices.push_back(buttons[k]->obj);
                     if (indented(buttons[k]->obj)) {
                         value = buttons[k]->text.empty() ? buttons[k]->tip : buttons[k]->text;
+                        // The game's description of the choice (its tooltip, "Turn on detailed popup close
+                        // combat reports") after a value that is the button's text (tester, 2026-11-10).
+                        if (!buttons[k]->text.empty() && !buttons[k]->tip.empty() && buttons[k]->tip != buttons[k]->text)
+                            value += L", " + buttons[k]->tip;
+                        std::wstring n = eng::name(buttons[k]->obj);
+                        static const char *const levels[] = {"IDS_DIFFMODE_NORMAL", "IDS_DIFFMODE_HELPER", "IDS_DIFFMODE_FUN",
+                                                             "IDS_DIFFMODE_HARD", "IDS_DIFFMODE_VERYHARD", "IDS_DIFFMODE_NIGHTMARE"};
+                        if (value.empty() && n.find(L"DIFFICULTYBUTTON") != std::wstring::npos && n.back() >= L'0' && n.back() <= L'5')
+                            value = eng::game_string(levels[n.back() - L'0']);
                         if (value.empty())
                             value = std::to_wstring(k + 1) + L" of " + std::to_wstring(buttons.size());
                     }

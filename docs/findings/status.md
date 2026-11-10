@@ -84,6 +84,20 @@
   uses the running exe's own copy. fog2-v0.1.1 published and its exe checked byte for byte. fog2-v0.1.0 (the
   old 4-file release) still exists: deleting it was refused as destructive; ask the user. Installer GUI not
   yet run by the user.
+- 2026-11-10 tester report (NVDA user, all DLCs):
+  - Settings difficulty (Core/UI/Options.txt OptionsDifficultyButton0-5, icons without text/tooltip, chosen one
+    pressed in; left to right buttons 2,1,0,3,4,5; names IDS_DIFFMODE_FUN/HELPER/NORMAL/HARD/VERYHARD/NIGHTMARE =
+    Centurion, Tribune, Legate, Governor, Emperor, Deity; value text OptionsDifficultyText): the row counted
+    4-6 buttons (unlabelled ones were decoration), lost focus, and the value text attached to Mouse Button Mode.
+    Now all six count, each named by its level, the value text is skipped. No level descriptions exist in the
+    game's text. Built, not run.
+  - Choice values now add the chosen button's tooltip when its text is the value (Options.txt has 53 tooltips,
+    e.g. "Turn on detailed popup close combat reports"). Built, not run.
+  - Crash after Quick Battles -> module "Rise of Rome": not reproduced; asked for logs (game: Documents\My
+    Games\FieldOfGlory2\error.log, error_trace.txt; mod: game folder FoG2Access.log/.log.old,
+    FoG2Access_loader.log) and whether it crashes with the mod uninstalled.
+  - "No custom campaign": the generator is Campaigns\2MPSRiseOfRome, listed as "Field of Glory II Campaigns"
+    (multi-part skirmish, MultiBattleCampaignUI.txt setup screen: never seen live).
 - Scanner categories now "You: <faction>" / "Enemy: <faction>" (user). Built, not heard.
 - README: Installation, What the mod does, What it cannot yet do, Keys (table), Scanner, How the mod works. git/gh: E:\code\tools\git\cmd,
   E:\code\tools\gh\bin (put on PATH for the command). Commit as the user's GitHub noreply address.
