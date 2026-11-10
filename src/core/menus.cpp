@@ -93,6 +93,17 @@ DWORD typed_at;
 std::vector<std::pair<void *, std::wstring>> texts_now, texts_before;
 DWORD watch_until;
 DWORD settle_at; // a new screen is spoken once its scripts have filled its texts
+DWORD settle_deadline; // ...or by then at the latest
+std::wstring settle_sig; // the screen's texts when last looked at while settling
+
+// All the texts on the screens that are up, as one string: a change means a script is still filling them.
+std::wstring text_signature()
+{
+    std::wstring s;
+    for (auto &t : texts_now)
+        s += t.second + L'\x1f';
+    return s;
+}
 std::wstring lines_built, lines_said; // the LINE items' texts: a change is a new page of the same box
 // "Loading": the game's thread stops taking messages while it loads a screen (15 s on this PC's hard disk
 // after Tutorial), so neither it nor the mod can speak. A watcher thread says "Loading" once when the
@@ -829,7 +840,13 @@ void refresh()
     if (watch_until && GetTickCount() < watch_until) {
         for (auto &[obj, text] : texts_now) {
             auto old_text = std::find_if(texts_before.begin(), texts_before.end(), [&](auto &b) { return b.first == obj; });
-            if (old_text == texts_before.end() || old_text->second != text)
+            // A changed text a control already says (the difficulty's name: "Tribune" then "Difficulty,
+            // Tribune", 2026-11-10) is left to the control.
+            bool said_by_control = false;
+            for (const Item &it : items) // already the fresh ones; LINE items are a text's own lines
+                if (it.type != LINE && !text.empty() && it.speech.find(text) != std::wstring::npos)
+                    said_by_control = true;
+            if ((old_text == texts_before.end() || old_text->second != text) && !said_by_control)
                 speak(text, false);
         }
         texts_before = texts_now;
@@ -844,12 +861,21 @@ void refresh()
     size_t now = index_of(current);
     if (!same && now == SIZE_MAX) {
         // A new screen (or a submenu replacing the controls): its script fills the texts over the
-        // next frames (the unit popup's description came a frame after its title), so wait a little.
+        // next frames, so it is spoken once they have stopped changing for 50 ms (60 ms at the least,
+        // half a second at the most). A fixed 60 ms read the unit information popup's title before the
+        // game had replaced the previous unit's (user, 2026-11-10: Ctrl+Enter on unit 2 said unit 1's name).
         settle_at = GetTickCount() + 60;
+        settle_deadline = GetTickCount() + 500;
+        settle_sig = text_signature();
         return;
     }
     if (settle_at) {
-        if (GetTickCount() >= settle_at) {
+        std::wstring sig = text_signature();
+        if (sig != settle_sig) {
+            settle_sig = sig;
+            settle_at = std::max(settle_at, GetTickCount() + 50);
+        }
+        if (GetTickCount() >= std::min(settle_at, settle_deadline)) {
             lines_said = lines_built;
             // A screen with a list (campaigns, scenarios, saves, the unit list) opens on the list, the
             // thing it is for (user, 2026-11-07); a tutorial box's lines still come first.
