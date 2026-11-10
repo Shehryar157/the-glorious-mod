@@ -312,13 +312,17 @@ bool visible(const Map &m, char *unit)
     if (x < 0 || y < 0 || x >= m.w || y >= m.h)
         return false;
     int me = my_side();
-    // The off-map predeployment area (ForceSelectionTools.bsf): units waiting there sit in the map's border
-    // rows, unseen even by their own side, and the game won't select them (tried 2026-11-10). They're not
-    // on the battlefield, so not on the cursor, in the scanner or the unit list.
+    return side == me || seen(m, x, y);
+}
+
+// The off-map predeployment area (ForceSelectionTools.bsf): units waiting there sit in the map's border
+// rows, unseen even by their own side, and the game won't select them (tried 2026-11-10). Spoken with
+// "not available" (user, 2026-11-10: mark them rather than hide them).
+bool parked(const Map &m, char *unit)
+{
+    int x = at<int>(unit, L.unit_tile), y = at<int>(unit, L.unit_tile + 4);
     bool border = x == 0 || y == 0 || x == m.w - 1 || y == m.h - 1;
-    if (side == me)
-        return !border || seen(m, x, y);
-    return seen(m, x, y);
+    return border && (int)at<unsigned>(unit, L.unit_side) == my_side() && !seen(m, x, y);
 }
 
 char *unit_at(const Map &m, int x, int y)
@@ -407,9 +411,17 @@ std::wstring name_and_general(char *unit, bool rank = false)
     return unit_name(unit) + (g.empty() ? L"" : rank ? L", has general, " + g : L", has general");
 }
 
+bool parked(char *unit)
+{
+    Map m;
+    return get_map(m) && parked(m, unit);
+}
+
 std::wstring describe(char *unit)
 {
     std::wstring s = name_and_general(unit);
+    if (parked(unit))
+        return s + L", not available"; // waiting off the battlefield: facing, command range don't apply
     std::wstring str = strength(unit);
     if (!str.empty())
         s += L", " + str;
@@ -1152,6 +1164,8 @@ void speak_item(const std::vector<Group> &gs, size_t g, size_t u, bool with_cate
     s += gs[g].name;
     if (scan_cat != GENERALS)
         s += L" " + std::to_wstring(u + 1) + L" of " + std::to_wstring(gs[g].units.size());
+    if (parked(unit.obj))
+        s += L", not available";
     if (is_selected(unit.obj))
         s += L", selected";
     s += L", " + offset(unit.x, unit.y) + L", " + std::to_wstring(g + 1) + L" of " + std::to_wstring(gs.size());
