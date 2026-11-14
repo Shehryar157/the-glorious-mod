@@ -1406,7 +1406,9 @@ void battle_tick()
                 }
                 // Deployment (user, 2026-11-09): a square outside the selected unit's area offers no Deploy
                 // / Swap order and the game draws no highlight there; say so in the game's words, once.
-                if (!deploy_checked && at<int>(battle(), L.bd_deploy_mode) != 0) {
+                // Decided 4 game frames after the move, not 2: the orders may still be filling in
+                // (2026-11-10: a whole column said "Cannot deploy here", next to our own units).
+                if (!deploy_checked && picks - picks_at_move >= 4 && at<int>(battle(), L.bd_deploy_mode) != 0) {
                     deploy_checked = true;
                     static std::wstring deploy = eng::game_string("IDS_TT_DEPLOY"),
                                         swap = eng::game_string("IDS_TT_SWAP_UNITS"),

@@ -16,7 +16,6 @@ refuses to go out without one.
 - A changed text is no longer read twice after changing a setting.
 - Deployment: squares outside the selected unit's area say "Cannot deploy here".
 - Units waiting off the battlefield are spoken as "not available" and left out of the scanner.
-- Scanner: categories say whose units they are ("You: Ancient British", "Enemy: Roman").
 - Hills: the cursor says "(Hill)" and the square's height.
 - R retreats from the battle (asks first), O reads the briefing.
 - End of battle: Final Losses is a table; the battlefield review keeps the map keys and N ends it.
@@ -26,6 +25,7 @@ refuses to go out without one.
 ## fog2-v0.1.1
 
 - The installer is the only download; the mod's files are inside it.
+- Scanner: categories say whose units they are ("You: Ancient British", "Enemy: Roman").
 
 ## fog2-v0.1.0
 
