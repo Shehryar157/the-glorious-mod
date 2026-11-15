@@ -41,6 +41,7 @@
 
 #include "battle.h"
 #include "engine.h"
+#include "lang.h"
 #include "speech.h"
 
 using eng::at;
@@ -127,13 +128,13 @@ std::vector<const Entry *> buffer_entries(int category)
 void speak_buffer(bool with_category)
 {
     std::vector<const Entry *> es = buffer_entries(buffer_category);
-    std::wstring s = with_category ? std::wstring(category_names[buffer_category]) + L", " : L"";
+    std::wstring s = with_category ? std::wstring(tr(category_names[buffer_category])) + L", " : L"";
     if (es.empty()) {
-        speak(s + L"empty");
+        speak(s + tr(L"empty"));
         return;
     }
     buffer_index = std::max(0, std::min((int)es.size() - 1, buffer_index));
-    speak(s + es[buffer_index]->text + L", " + std::to_wstring(buffer_index + 1) + L" of " + std::to_wstring(es.size()));
+    speak(s + es[buffer_index]->text + L", " + eng::position(buffer_index + 1, es.size()));
 }
 
 // [ ] , . (Shift: to the end that way).
@@ -384,7 +385,7 @@ std::wstring facing(char *unit)
     static const wchar_t *const names[] = {L"south", L"southeast", L"east", L"northeast",
                                            L"north", L"northwest", L"west", L"southwest"};
     int f = at<uint16_t>(unit, L.unit_facing) % 360;
-    return std::wstring(L"facing ") + names[(f + 22) / 45 % 8];
+    return trf(L"facing {0}", {tr(names[(f + 22) / 45 % 8])});
 }
 
 // A general with the unit (UnitList.bsf: attribute General > -1): its rank in the game's words,
@@ -408,7 +409,8 @@ std::wstring general(char *unit)
 std::wstring name_and_general(char *unit, bool rank = false)
 {
     std::wstring g = general(unit);
-    return unit_name(unit) + (g.empty() ? L"" : rank ? L", has general, " + g : L", has general");
+    std::wstring has = std::wstring(L", ") + tr(L"has general");
+    return unit_name(unit) + (g.empty() ? L"" : rank ? has + L", " + g : has);
 }
 
 bool parked(char *unit)
@@ -421,11 +423,11 @@ std::wstring describe(char *unit)
 {
     std::wstring s = name_and_general(unit);
     if (parked(unit))
-        return s + L", not available"; // waiting off the battlefield: facing, command range don't apply
+        return s + L", " + tr(L"not available"); // waiting off the battlefield: facing, command range don't apply
     std::wstring str = strength(unit);
     if (!str.empty())
         s += L", " + str;
-    s += L", " + facing(unit);
+    s += L", " + facing(unit); // read_unit finds it again by this text
     // The game's 3 key draws command ranges: say it of our units out of range (GeneralInCommandRange -1:
     // no general in range; such units lose their free 45 degree turn, IDS_LTIP37).
     static int command = -2;
@@ -433,12 +435,12 @@ std::wstring describe(char *unit)
         command = attrib_index("GeneralInCommandRange");
     if (command >= 0 && (int)at<unsigned>(unit, L.unit_side) == my_side() &&
         ((const int *)(unit + L.unit_attrib))[command] == -1)
-        s += L", out of command range";
+        s += std::wstring(L", ") + tr(L"out of command range");
     int side = (int)at<unsigned>(unit, L.unit_side);
     if (side != my_side())
         s += L", " + faction(side);
     if (is_selected(unit))
-        s += L", selected";
+        s += std::wstring(L", ") + tr(L"selected");
     return s;
 }
 
@@ -447,10 +449,10 @@ std::wstring offset(int x, int y)
     int dx = x - cur_x, dy = y - cur_y;
     std::wstring s;
     if (dy)
-        s = std::to_wstring(dy < 0 ? -dy : dy) + (dy < 0 ? L" north" : L" south");
+        s = trf(dy < 0 ? L"{0} north" : L"{0} south", {std::to_wstring(dy < 0 ? -dy : dy)});
     if (dx)
-        s += (s.empty() ? L"" : L", ") + std::to_wstring(dx < 0 ? -dx : dx) + (dx < 0 ? L" west" : L" east");
-    return s.empty() ? L"here" : s;
+        s += (s.empty() ? L"" : L", ") + trf(dx < 0 ? L"{0} west" : L"{0} east", {std::to_wstring(dx < 0 ? -dx : dx)});
+    return s.empty() ? tr(L"here") : s;
 }
 
 // --- grid ---
@@ -483,7 +485,7 @@ void speak_tile(const Map &m)
     }
     // The game's 2 key draws line of sight: say it of squares our side doesn't see.
     if (!seen(m, cur_x, cur_y))
-        s += L", out of sight";
+        s += std::wstring(L", ") + tr(L"out of sight");
     s += L", " + std::to_wstring(cur_x) + L", " + std::to_wstring(cur_y);
     speak(s);
     all_texts(texts_before);
@@ -516,7 +518,7 @@ void move(int dx, int dy)
         return;
     int x = cur_x + dx, y = cur_y + dy;
     if (x < 0 || y < 0 || x >= m.w || y >= m.h) {
-        speak(L"edge");
+        speak(tr(L"edge"));
         return;
     }
     cur_x = x;
@@ -536,7 +538,7 @@ void read_unit()
         return;
     char *u = unit_at(m, cur_x, cur_y);
     if (!u) {
-        speak(L"empty");
+        speak(tr(L"empty"));
         return;
     }
     Stats st = unit_stats(u);
@@ -549,7 +551,8 @@ void read_unit()
     if (!st.morale.empty())
         s += L", " + st.morale;
     std::wstring rest = describe(u); // name, [strength,] facing, command range, faction, selected
-    size_t facing_at = rest.find(L", facing ");
+    std::wstring facing_word = trf(L"facing {0}", {L""});
+    size_t facing_at = rest.find(L", " + facing_word.substr(0, facing_word.find_last_not_of(L' ') + 1));
     if (facing_at != std::wstring::npos)
         s += rest.substr(facing_at);
     // The game's own panel: the selected unit's, or the hovered (targeted) one's.
@@ -586,16 +589,16 @@ std::wstring order_text(int i)
     // comes first, then the facts (user, 2026-11-07): "Shoot, Half Arc of Fire, Casualties: 4 - 16".
     // Outside tutorial mode the game writes "Turn and Shoot:" as a first line instead (TurnAndShoot.BSF);
     // in the tutorial text the name may start on a new line ("on the~Turn and Shoot icon").
+    // The click phrase is found in each of the game's languages (lang::click_instruction, 2026-11-15:
+    // "auf das Symbol 'Schießen'", "sur l'icone Tirer", "en el icono Disparar").
     std::wstring name, rest;
     for (int k = 0; k < 3; k++) {
         std::wstring text = eng::plain(eng::kstring(icon, L.obj_tooltip + k * 12));
-        size_t ic = name.empty() ? text.find(L" icon") : std::wstring::npos;
-        size_t the = ic == std::wstring::npos ? std::wstring::npos : text.rfind(L"the", ic);
-        if (the != std::wstring::npos && the + 4 <= ic && (text[the + 3] == L' ' || text[the + 3] == L'\n')) {
-            name = text.substr(the + 4, ic - the - 4);
-            std::replace(name.begin(), name.end(), L'\n', L' ');
-            name = trim(name);
-            size_t from = text.rfind(L'\n', the), to = text.find(L'\n', ic);
+        size_t at_from, at_to;
+        std::wstring found;
+        if (name.empty() && lang::click_instruction(text, found, at_from, at_to)) {
+            name = trim(found);
+            size_t from = at_from ? text.rfind(L'\n', at_from - 1) : std::wstring::npos, to = text.find(L'\n', at_to);
             from = from == std::wstring::npos ? 0 : from + 1;
             text.erase(from, to == std::wstring::npos ? std::wstring::npos : to - from); // the whole click instruction
         }
@@ -616,13 +619,13 @@ std::wstring order_text(int i)
     }
     // Outside the tutorial the charge tooltip has no name, only "Impact: Win 83%, ... Melee: ...":
     // put the game's word for it first (IDS_TT_CHARGE; another file uses that id for a long sentence).
-    static std::wstring impact = eng::game_string("IDS_TT_IMPACT"), charge = eng::game_string("IDS_TT_CHARGE");
+    std::wstring impact = eng::game_string("IDS_TT_IMPACT"), charge = eng::game_string("IDS_TT_CHARGE");
     // (The detailed version, Ctrl held, starts "Impact, Points of Advantage...".)
     if (name.empty() && !impact.empty() && rest.size() > impact.size() && rest.compare(0, impact.size(), impact) == 0 &&
         (rest[impact.size()] == L':' || rest[impact.size()] == L','))
         name = !charge.empty() && charge.size() <= 20 ? charge : L"Charge";
     std::wstring t = name.empty() ? rest : rest.empty() ? name : name + L", " + rest;
-    return at<bool>(icon, L.obj_enabled) ? t : t + L", unavailable";
+    return at<bool>(icon, L.obj_enabled) ? t : t + L", " + tr(L"unavailable");
 }
 
 // Undo (Undo.BSF CHECK_ALL_UNDO, tooltip IDS_TT_UNDO): offered on the square a unit came from.
@@ -641,7 +644,7 @@ bool is_undo(int i)
 bool order_blank(int i)
 {
     std::wstring t = order_text(i);
-    return t.empty() || t == L", unavailable";
+    return t.empty() || t == std::wstring(L", ") + tr(L"unavailable");
 }
 
 std::wstring orders()
@@ -753,8 +756,7 @@ void close_order_menu()
 
 void speak_order_menu()
 {
-    speak(order_text(menu_orders[order_menu]) + L", " + std::to_wstring(order_menu + 1) + L" of " +
-          std::to_wstring(menu_orders.size()));
+    speak(order_text(menu_orders[order_menu]) + L", " + eng::position(order_menu + 1, menu_orders.size()));
 }
 
 // Enter: with a unit selected and orders on the tile, its only order, or the list of them (the game's
@@ -810,7 +812,7 @@ void unit_step(int dx, int dy)
         return;
     int x = at<int>(u, L.unit_tile) + dx, y = at<int>(u, L.unit_tile + 4) + dy;
     if (x < 0 || y < 0 || x >= m.w || y >= m.h) {
-        speak(L"edge");
+        speak(tr(L"edge"));
         return;
     }
     cur_x = x;
@@ -837,7 +839,7 @@ bool order_menu_key(WPARAM vk)
         do_order(i); // clears mSelectedTile
         return true;
     }
-    case VK_ESCAPE: close_order_menu(); speak(L"canceled"); return true;
+    case VK_ESCAPE: close_order_menu(); speak(tr(L"canceled")); return true;
     }
     close_order_menu(); // any other key closes it and does its own thing
     return false;
@@ -932,7 +934,7 @@ void read_end_turn()
     if (end_turn_asking()) {
         end_prompt = true;
         void *confirm = hud(L"CONFIRMENDTURNBUTTON");
-        s += L". " + trim(eng::plain(eng::kstring(confirm, L.button_string))) + L", 1 of 1";
+        s += L". " + trim(eng::plain(eng::kstring(confirm, L.button_string))) + L", " + eng::position(1, 1);
     }
     speak(s);
 }
@@ -980,14 +982,14 @@ void ask_retreat()
     if (label.empty())
         label = eng::game_string("IDS_BTTOOL_RETREAT");
     retreat_prompt = true;
-    speak(label + L", 1 of 1");
+    speak(label + L", " + eng::position(1, 1));
 }
 
 bool end_prompt_key(WPARAM vk)
 {
     switch (vk) {
     case VK_RETURN: case 'N': end_turn(); return true;
-    case VK_ESCAPE: take_back_end_turn(); speak(L"canceled"); return true;
+    case VK_ESCAPE: take_back_end_turn(); speak(tr(L"canceled")); return true;
     case VK_UP: case VK_DOWN: case VK_HOME: case VK_END: read_end_turn(); return true;
     }
     take_back_end_turn(); // any other key: the question goes, the key does its own thing
@@ -1061,7 +1063,7 @@ void watch_units(const Map &m)
                 t.quiet = 0;
             } else if (t.lost > 0 && ++t.quiet == 30) {
                 if (see || side == me)
-                    note(COMBAT, who + L", lost " + std::to_wstring(t.lost) + L" men, " + std::to_wstring(men) + L" left");
+                    note(COMBAT, who + L", " + trf(L"lost {0} men, {1} left", {std::to_wstring(t.lost), std::to_wstring(men)}));
                 t.lost = 0;
             }
             t.men = men;
@@ -1074,13 +1076,13 @@ void watch_units(const Map &m)
             t.morale = morale;
             if (side != me) {
                 if (see && !t.seen) {
-                    note(MOVES, who + L", spotted, " + std::to_wstring(x) + L", " + std::to_wstring(y) + L", " + offset(x, y));
+                    note(MOVES, who + L", " + tr(L"spotted") + L", " + std::to_wstring(x) + L", " + std::to_wstring(y) + L", " + offset(x, y));
                     t.said_x = x;
                     t.said_y = y;
                 }
                 t.still = x == t.x && y == t.y ? t.still + 1 : 0;
                 if (see && t.still == 30 && (x != t.said_x || y != t.said_y)) {
-                    note(MOVES, who + L", moved to " + std::to_wstring(x) + L", " + std::to_wstring(y) + L", " + offset(x, y));
+                    note(MOVES, who + L", " + tr(L"moved to") + L" " + std::to_wstring(x) + L", " + std::to_wstring(y) + L", " + offset(x, y));
                     t.said_x = x;
                     t.said_y = y;
                 }
@@ -1134,10 +1136,13 @@ const int SCAN_CATS = 3, GENERALS = 2;
 std::wstring cat_name(int cat)
 {
     if (cat == GENERALS)
-        return L"Generals";
+        return tr(L"Generals");
     // Which side is which, not only the faction's name (user, 2026-11-09): "You: Ancient British",
     // "Enemy: Roman".
-    return (cat ? L"Enemy: " : L"You: ") + faction(cat ? 1 - my_side() : my_side());
+    // "Enemy" is the game's word (IDS_results_enemy: Feindlich, Ennemi, Enemigas); "You" is the mod's.
+    std::wstring enemy = trim(eng::game_string("IDS_results_enemy"));
+    return (cat ? (enemy.empty() ? L"Enemy" : enemy) : std::wstring(tr(L"You"))) + L": " +
+           faction(cat ? 1 - my_side() : my_side());
 }
 
 std::vector<Group> groups_for(const Map &m, int cat)
@@ -1163,10 +1168,10 @@ void speak_item(const std::vector<Group> &gs, size_t g, size_t u, bool with_cate
     std::wstring s = with_category ? cat_name(scan_cat) + L", " : L"";
     s += gs[g].name;
     if (scan_cat != GENERALS)
-        s += L" " + std::to_wstring(u + 1) + L" of " + std::to_wstring(gs[g].units.size());
+        s += L" " + eng::position(u + 1, gs[g].units.size());
     if (is_selected(unit.obj))
-        s += L", selected";
-    s += L", " + offset(unit.x, unit.y) + L", " + std::to_wstring(g + 1) + L" of " + std::to_wstring(gs.size());
+        s += std::wstring(L", ") + tr(L"selected");
+    s += L", " + offset(unit.x, unit.y) + L", " + eng::position(g + 1, gs.size());
     speak(s);
 }
 
@@ -1183,7 +1188,7 @@ void scan(int dir, Step step)
         std::vector<Group> gs = groups_for(m, scan_cat);
         if (gs.empty()) {
             scan_unit = nullptr;
-            speak(cat_name(scan_cat) + L", empty");
+            speak(cat_name(scan_cat) + L", " + tr(L"empty"));
         } else {
             speak_item(gs, 0, 0, true);
         }
@@ -1191,7 +1196,7 @@ void scan(int dir, Step step)
     }
     std::vector<Group> gs = groups_for(m, scan_cat);
     if (gs.empty()) {
-        speak(cat_name(scan_cat) + L", empty");
+        speak(cat_name(scan_cat) + L", " + tr(L"empty"));
         return;
     }
     // Where we are: the same unit, else its type, else the start.
@@ -1239,7 +1244,7 @@ void scan_go(bool move_there)
     std::vector<Group> gs = groups_for(m, scan_cat);
     Unit *u = scanned(gs);
     if (!u) {
-        speak(L"none");
+        speak(tr(L"none"));
         return;
     }
     if (move_there) {
@@ -1456,11 +1461,18 @@ void battle_tick()
         }
         if (!block.empty()) {
             note(COMBAT, block, false);
-            size_t r = block.rfind(L"Result: ");
+            // Found by the game's own words, so it works in every language (CloseCombatLogic.BSF prints
+            // IDS_UI_COMBAT_RESULT ": ...", CombatTools.BSF then "<IDS_TT_OUR / IDS_TT_ENEMY>
+            // IDS_UI_COMBAT_RESULT_CASUALTIES: n"). English: "Result: ..." up to " Enemy Casualties".
+            std::wstring result = trim(eng::game_string("IDS_UI_COMBAT_RESULT")),
+                         our = trim(eng::game_string("IDS_TT_OUR")), enemy = trim(eng::game_string("IDS_TT_ENEMY")),
+                         cas = trim(eng::game_string("IDS_UI_COMBAT_RESULT_CASUALTIES"));
+            size_t r = result.empty() ? std::wstring::npos : block.rfind(result + L":");
             if (r != std::wstring::npos) {
-                size_t end = block.find(L" Enemy Casualties", r);
-                size_t end2 = block.find(L" Our Casualties", r);
-                end = std::min(end, end2);
+                size_t end = std::wstring::npos;
+                for (const std::wstring *w : {&our, &enemy})
+                    if (!w->empty() && !cas.empty())
+                        end = std::min(end, block.find(L" " + *w + L" " + cas, r));
                 speak(trim(block.substr(r, end == std::wstring::npos ? 60 : end - r)), false);
             }
         }
@@ -1500,12 +1512,12 @@ void battle_tick()
             // far it went is said (user, 2026-11-07): "Warband, selected, 3 north, 2 east".
             int x = at<int>(u, L.unit_tile), y = at<int>(u, L.unit_tile + 4);
             std::wstring moved = offset(x, y);
-            speak(name_and_general(u) + L", selected" + (moved == L"here" ? L"" : L", " + moved), false);
+            speak(name_and_general(u) + L", " + tr(L"selected") + (moved == tr(L"here") ? L"" : L", " + moved), false);
             cur_x = x;
             cur_y = y;
         }
         else
-            speak(L"canceled", false);
+            speak(tr(L"canceled"), false);
     }
 }
 
@@ -1681,7 +1693,7 @@ int help_at = -1;
 void speak_help()
 {
     const int n = (int)(sizeof key_help / sizeof key_help[0]);
-    speak(std::wstring(key_help[help_at]) + L", " + std::to_wstring(help_at + 1) + L" of " + std::to_wstring(n));
+    speak(std::wstring(tr(key_help[help_at])) + L", " + eng::position(help_at + 1, n));
 }
 
 bool help_key(WPARAM vk, bool act)
@@ -1697,7 +1709,7 @@ bool help_key(WPARAM vk, bool act)
     case VK_F1:
         if (act) {
             help_at = -1;
-            speak(L"closed");
+            speak(tr(L"closed"));
         }
         return true;
     default:
@@ -1752,7 +1764,7 @@ bool battle_key(WPARAM vk, bool act)
             return true;
         }
         if (vk == VK_ESCAPE) {
-            speak(L"canceled");
+            speak(tr(L"canceled"));
             return true;
         }
     }

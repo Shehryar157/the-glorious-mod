@@ -38,6 +38,7 @@
 
 #include "battle.h"
 #include "engine.h"
+#include "lang.h"
 #include "menus.h"
 #include "speech.h"
 
@@ -171,11 +172,11 @@ std::wstring states(void *b)
 {
     std::wstring s;
     if (at<bool>(b, L.button_is_checkbox))
-        s += at<bool>(b, L.button_checked) ? L", checked" : L", not checked";
+        s += std::wstring(L", ") + tr(at<bool>(b, L.button_checked) ? L"checked" : L"not checked");
     if (at<bool>(b, L.button_indented))
-        s += L", selected"; // a tab or option shown pressed in
+        s += std::wstring(L", ") + tr(L"selected"); // a tab or option shown pressed in
     if (at<bool>(b, L.button_greyed) || !at<bool>(b, L.obj_enabled))
-        s += L", unavailable";
+        s += std::wstring(L", ") + tr(L"unavailable");
     return s;
 }
 
@@ -211,17 +212,17 @@ std::wstring entry(void *list, int index)
         while (!s.empty() && s[0] == L' ')
             s.erase(0, 1);
         if (flags & 1) {
-            static std::wstring locked = [] {
+            std::wstring locked = [] {
                 std::wstring t = eng::game_string("IDS_LOCKED_EXP_PACK");
                 t.erase(std::remove(t.begin(), t.end(), L'~'), t.end());
                 while (!t.empty() && (iswspace(t.back()) || t.back() == L':'))
                     t.pop_back();
-                return t.empty() ? std::wstring(L"locked") : t;
+                return t.empty() ? std::wstring(tr(L"locked")) : t;
             }();
             s += L", " + locked + (pack.empty() ? L"" : L": " + pack);
         }
         if (!(flags & 2))
-            s += L", user content";
+            s += std::wstring(L", ") + tr(L"user content");
     }
     std::wstring more = battle_force_details(list, index, false); // force selection: cost, quantity
     return more.empty() ? s : s + L", " + more;
@@ -319,8 +320,8 @@ std::vector<Item> results_table(std::vector<El> &els)
     }
     for (auto &r : table.cells)
         r.resize(table.cols.size());
-    table.name = table.speech = L"table, " + std::to_wstring(table.rows.size()) + L" rows, " +
-                                std::to_wstring(table.cols.size()) + L" columns";
+    table.name = table.speech = trf(L"table, {0} rows, {1} columns",
+                                    {std::to_wstring(table.rows.size()), std::to_wstring(table.cols.size())});
     if (!table.rows.empty())
         out.push_back(table);
     return out;
@@ -503,7 +504,7 @@ std::vector<Item> build(std::wstring &title_out)
         Item it{LIST, l.obj, {l.obj}};
         it.name = join(headers);
         it.speech = (it.name.empty() ? L"" : it.name + L", ") +
-                    (at<bool>(l.obj, L.list_dropdown) ? L"drop-down" : L"list");
+                    tr(at<bool>(l.obj, L.list_dropdown) ? L"drop-down" : L"list");
         lists.push_back({l.column * 100000 + l.box.top, it});
         l.used = true;
     }
@@ -531,7 +532,7 @@ std::vector<Item> build(std::wstring &title_out)
             it.name = ed.tip;
         }
         it.text = ed.text;
-        it.speech = (it.name.empty() ? L"" : it.name + L", ") + L"edit" + (ed.text.empty() ? L"" : L", " + ed.text);
+        it.speech = (it.name.empty() ? L"" : it.name + L", ") + tr(L"edit") + (ed.text.empty() ? L"" : L", " + ed.text);
         lists.push_back({ed.column * 100000 + ed.box.top, it});
         ed.used = true;
     }
@@ -595,7 +596,7 @@ std::vector<Item> build(std::wstring &title_out)
                         if (value.empty() && n.find(L"DIFFICULTYBUTTON") != std::wstring::npos && n.back() >= L'0' && n.back() <= L'5')
                             value = eng::game_string(levels[n.back() - L'0']);
                         if (value.empty())
-                            value = std::to_wstring(k + 1) + L" of " + std::to_wstring(buttons.size());
+                            value = eng::position(k + 1, buttons.size());
                     }
                 }
                 it.speech = (it.name.empty() ? L"" : it.name + L", ") + value;
@@ -657,7 +658,7 @@ std::vector<Item> build(std::wstring &title_out)
                         // without a name takes the text right above it (the end-of-battle "Difficulty").
                         size_t comma = last_item->speech.rfind(L", ");
                         size_t from = comma == std::wstring::npos ? 0 : comma + 2;
-                        bool numbered = last_item->speech.find(L" of ", from) != std::wstring::npos;
+                        bool numbered = last_item->speech.find(L" " + eng::of_word() + L" ", from) != std::wstring::npos;
                         std::wstring head = comma == std::wstring::npos ? L"" : last_item->speech.substr(0, comma);
                         if (last_item->name.empty() && !headings.empty()) {
                             RECT box = at<RECT>(last_item->obj, L.obj_box);
@@ -798,17 +799,17 @@ void announce(size_t i, bool heading, bool opening = false)
         table_row = std::min(table_row, (int)t.rows.size() - 1);
         table_col = std::min(table_col, (int)t.cols.size() - 1);
         const std::wstring &v = t.cells[table_row][table_col];
-        s += L", " + t.rows[table_row] + L", " + t.cols[table_col] + L", " + (v.empty() ? L"blank" : v);
+        s += L", " + t.rows[table_row] + L", " + t.cols[table_col] + L", " + (v.empty() ? std::wstring(tr(L"blank")) : v);
     }
     if (items[i].type == LIST) {
         void *list = items[i].obj;
         int n = eng::list_count(list), sel = at<int>(list, L.list_selected);
         if (sel >= 0 && sel < n)
-            s += L", " + entry(list, sel) + L", " + std::to_wstring(sel + 1) + L" of " + std::to_wstring(n);
+            s += L", " + entry(list, sel) + L", " + eng::position(sel + 1, n);
         else
-            s += L", " + std::to_wstring(n) + L" items";
+            s += L", " + trf(L"{0} items", {std::to_wstring(n)});
     }
-    s += L", " + std::to_wstring(i + 1) + L" of " + std::to_wstring(items.size());
+    s += L", " + eng::position(i + 1, items.size());
     speak(s);
 }
 
@@ -939,7 +940,7 @@ void refresh()
         else if (b.size() > a.size() && b.compare(0, a.size(), a) == 0)
             speak(b.substr(a.size()));
         else
-            speak(a.empty() ? L"blank" : a);
+            speak(a.empty() ? std::wstring(tr(L"blank")) : a);
         return;
     }
     if (now != SIZE_MAX && new_title && !title.empty() && !(watch_until && GetTickCount() < watch_until))
@@ -1023,11 +1024,11 @@ bool table_key(const Item &t, WPARAM vk, bool act)
     if (c != table_col)
         s += t.cols[c] + L", ";
     if (r == table_row && c == table_col)
-        s = L"edge, "; // as the battle grid says at its edge
+        s = std::wstring(tr(L"edge")) + L", "; // as the battle grid says at its edge
     table_row = r;
     table_col = c;
     const std::wstring &v = t.cells[r][c];
-    speak(s + (v.empty() ? L"blank" : v));
+    speak(s + (v.empty() ? std::wstring(tr(L"blank")) : v));
     return true;
 }
 
@@ -1082,7 +1083,7 @@ bool list_key(const Item &it, WPARAM vk, bool act)
         watch_texts();
         eng::list_select(list, to);
     }
-    speak(entry(list, to) + L", " + std::to_wstring(to + 1) + L" of " + std::to_wstring(n));
+    speak(entry(list, to) + L", " + eng::position(to + 1, n));
     return true;
 }
 
@@ -1096,6 +1097,24 @@ void type_search(wchar_t c, size_t i)
         move_to(i, k);
 }
 
+// Button labels to look for, lower case: the English words and the game's strings for them.
+static std::vector<std::wstring> button_words(std::initializer_list<const wchar_t *> en,
+                                              std::initializer_list<const char *> ids)
+{
+    std::vector<std::wstring> out(en.begin(), en.end());
+    for (const char *id : ids) {
+        std::wstring w = eng::game_string(id);
+        w.erase(std::remove(w.begin(), w.end(), L'~'), w.end());
+        while (!w.empty() && iswspace(w.back()))
+            w.pop_back();
+        for (wchar_t &c : w)
+            c = towlower(c);
+        if (!w.empty())
+            out.push_back(w);
+    }
+    return out;
+}
+
 // Escape steps out: press the screen's own way out (Close, Go Back, Back, Cancel, OK...), found by
 // the button's object name or its text. In battle with only the tutorial's box up, Escape stays the
 // battle's / the game's (the system menu).
@@ -1105,7 +1124,10 @@ bool escape(bool act)
     if (battle_owns())
         return false;
     static const wchar_t *const names[] = {L"CLOSE", L"BACK", L"CANCEL", L"OK", L"EXIT", L"DONE"};
-    static const wchar_t *const words[] = {L"close", L"go back", L"back", L"cancel", L"ok", L"exit", L"done"};
+    // Labels: English, then the game's own words for them in the current language (2026-11-15).
+    std::vector<std::wstring> words = button_words({L"close", L"go back", L"back", L"cancel", L"ok", L"exit", L"done"},
+                                                   {"IDS_CLOSE", "IDS_TT_Back", "IDS_BACK", "IDS_CANCEL",
+                                                    "IDS_LAUNCHER_OK", "IDS_DONE", "IDS_BUTTON_DONE"});
     for (const wchar_t *want : names)
         for (Item &it : items) {
             if (it.type != BUTTON)
@@ -1119,7 +1141,7 @@ bool escape(bool act)
                 return true;
             }
         }
-    for (const wchar_t *want : words)
+    for (const std::wstring &want : words)
         for (Item &it : items) {
             std::wstring label = it.name;
             for (wchar_t &c : label)
@@ -1140,7 +1162,9 @@ void *start_button()
 {
     eng::stage = "menus.start_button";
     static const wchar_t *const names[] = {L"ACCEPT", L"LAUNCH", L"START", L"PLAY"};
-    static const wchar_t *const words[] = {L"accept", L"launch", L"start", L"play"};
+    std::vector<std::wstring> words = button_words({L"accept", L"launch", L"start", L"play"},
+                                                   {"IDS_BUTTON_ACCEPT", "IDS_FORCE_SELECT_COMPLETE",
+                                                    "IDS_BUTTON_LAUNCH", "IDS_START", "IDS_PLAY"});
     for (const wchar_t *want : names)
         for (Item &it : items) {
             if (it.type != BUTTON)
@@ -1150,7 +1174,7 @@ void *start_button()
             if (n.size() >= len && n.compare(n.size() - len, len, want) == 0)
                 return it.obj;
         }
-    for (const wchar_t *want : words)
+    for (const std::wstring &want : words)
         for (Item &it : items) {
             if (it.type != BUTTON)
                 continue;
@@ -1219,7 +1243,7 @@ bool key(WPARAM vk, bool act)
                 press(it.obj); // a LINE does nothing
             else if (it.type == EDIT) {
                 eng::focus(it.obj);
-                speak(editing() ? L"editing" : L"unavailable");
+                speak(tr(editing() ? L"editing" : L"unavailable"));
             } else if (it.type == CHOICE)
                 step_choice(it, 1, true);
         }
@@ -1334,7 +1358,7 @@ DWORD WINAPI watch_loading(void *)
         DWORD t = tick_at, p = press_at, now = GetTickCount();
         if (t && p && p + 50 >= t && now - t > 1000 && said_for != t) {
             said_for = t;
-            speak(L"Loading");
+            speak(tr(L"Loading"));
         }
     }
     return 0;

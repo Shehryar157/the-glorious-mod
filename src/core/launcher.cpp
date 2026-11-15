@@ -25,6 +25,8 @@
 #include <string>
 #include <vector>
 
+#include "engine.h"
+#include "lang.h"
 #include "launcher.h"
 #include "speech.h"
 
@@ -174,13 +176,13 @@ static void announce()
     if (item.name.empty()) {
         wchar_t buf[256] = L"";
         GetWindowTextW(combo, buf, 256); // a drop-down list's text is its selection
-        text = std::wstring(buf) + L", combo box";
+        text = std::wstring(buf) + L", " + tr(L"combo box");
     } else {
         text = item.text;
         if (!item.enabled)
-            text += L", unavailable";
+            text += std::wstring(L", ") + tr(L"unavailable");
     }
-    text += L", " + std::to_wstring(current + 1) + L" of " + std::to_wstring(items.size());
+    text += L", " + eng::position(current + 1, items.size()); // "of" from OPTIONS.TXT's language here
     speak(text);
 }
 

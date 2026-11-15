@@ -79,6 +79,9 @@ std::wstring name(const void *obj);
 std::wstring plain(const std::wstring &s);
 // A localized string by id ("IDS_UNITNAME48"); empty if the language files lack it.
 std::wstring game_string(const char *id);
+// "3 of 8" with the game's own word for "of" (IDS_TURNS_OF: von, sur, de), English if it's missing.
+std::wstring of_word();
+std::wstring position(size_t i, size_t n);
 // Press a button the way a left click does.
 void trigger(void *button);
 

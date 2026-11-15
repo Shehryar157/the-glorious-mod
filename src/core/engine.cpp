@@ -4,6 +4,7 @@
 #include <unordered_map>
 
 #include "engine.h"
+#include "lang.h"
 #include "speech.h"
 
 namespace eng {
@@ -431,11 +432,17 @@ std::wstring plain(const std::wstring &s)
         std::wstring tag = s.substr(i, end - i);
         i = end + 1;
         if (tag.find(L"left_mouse") != std::wstring::npos || tag.find(L"right_mouse") != std::wstring::npos) {
-            if (s.compare(i, 3, L"ing") == 0) {
-                out += L"pressing Enter";
+            // "<click>ing" (English) and "<click>ant" (French: "en <click>ant sur elle") become
+            // "pressing Enter" / "en appuyant sur Entrée"; elsewhere the key's name in the language.
+            bool en_ing = s.compare(i, 3, L"ing") == 0, fr_ant = s.compare(i, 3, L"ant") == 0;
+            if (en_ing || fr_ant) {
+                std::wstring p = lang::pressing_key();
+                if (fr_ant && p.compare(0, 3, L"en ") == 0 && out.size() >= 3 && out.compare(out.size() - 3, 3, L"en ") == 0)
+                    p.erase(0, 3); // "en <click>ant": the "en" is already there
+                out += p;
                 i += 3;
             } else {
-                out += L"Enter";
+                out += lang::key_word();
             }
         }
     }
@@ -447,10 +454,29 @@ std::wstring game_string(const char *id)
     // FindEntry rather than GetString: it returns null for a missing id instead of
     // logging it and handing back a placeholder.
     typedef const char *(__thiscall * Find_t)(void *self, const char *id);
+    if (!string_store_ptr || !fn_find_entry)
+        return {}; // the launcher, or symbols not loaded yet
     void *store = *(void **)string_store_ptr;
     const char *entry = store ? ((Find_t)fn_find_entry)(store, id) : nullptr;
     const wchar_t *text = entry ? *(const wchar_t *const *)(entry + 0x40) : nullptr; // TStringStoreEntry text
     return text ? plain(text) : std::wstring();
+}
+
+std::wstring of_word()
+{
+    static std::wstring of; // cached once found; asked again while the string store isn't up yet
+    if (of.empty()) {
+        std::wstring s = game_string("IDS_TURNS_OF");
+        size_t a = s.find_first_not_of(L" \t~"), b = s.find_last_not_of(L" \t~");
+        if (a != std::wstring::npos)
+            of = s.substr(a, b - a + 1);
+    }
+    return of.empty() ? tr(L"of") : of;
+}
+
+std::wstring position(size_t i, size_t n)
+{
+    return std::to_wstring(i) + L" " + of_word() + L" " + std::to_wstring(n);
 }
 
 void trigger(void *button)

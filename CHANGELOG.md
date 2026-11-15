@@ -4,6 +4,13 @@ Each release's section becomes its release notes on GitHub, and the installer sh
 before you update. Add a section here before running `python tools/build.py release X.Y.Z`; the release
 refuses to go out without one.
 
+## fog2-v0.1.4
+
+- The mod speaks in the game's language: English, French, German or Spanish, following the game's language setting (the launcher too).
+- Order names are read in every language, and pictures of mouse buttons in tutorial text are read as your key (Enter).
+- The key help (F1) uses each language's key names.
+- Close, Back and Start buttons are recognised by their translated names.
+
 ## fog2-v0.1.3
 
 - Fixed a crash when choosing Rise of Rome in the Quick Battles list, or launching it.
